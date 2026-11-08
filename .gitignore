@@ -1,0 +1,17 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# APK 与本地构建输出
+*.apk
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/capacitor-cordova-android-plugins/
+android/app/src/main/assets/public/
+
+# 日志与系统文件
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,14 @@
+{
+  "appId": "com.xiaochengjiu.app",
+  "appName": "小成就",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_xcj",
+      "iconColor": "#F97316"
+    }
+  }
+}

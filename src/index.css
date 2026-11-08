@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/* class 策略的深色模式（挂在 <html class="dark"> 上） */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply font-sans text-slate-800 antialiased;
+  }
+}
+
+@layer components {
+  /* 圆角卡片：暖白半透明，透出壁纸 */
+  .card {
+    @apply rounded-3xl bg-white/85 p-5 shadow-sm backdrop-blur-sm;
+  }
+  .btn-primary {
+    @apply rounded-2xl bg-orange-500 px-5 py-3 text-[15px] font-semibold text-white shadow-md shadow-orange-200 transition active:scale-[0.97];
+  }
+  .input {
+    @apply rounded-2xl border-0 bg-orange-50/70 px-4 py-3 text-[15px] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-300;
+  }
+  .sheet-btn {
+    @apply w-full rounded-2xl bg-slate-100 py-3 text-[15px] font-medium text-slate-600 transition active:scale-[0.98];
+  }
+}
+
+/* ===== 动效 ===== */
+@keyframes pop {
+  0% { transform: scale(0.3); opacity: 0.3; }
+  60% { transform: scale(1.25); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes slide-up {
+  from { transform: translateY(28px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes badge-pop {
+  0% { transform: scale(0.3) rotate(-10deg); opacity: 0; }
+  60% { transform: scale(1.12) rotate(4deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.anim-pop { animation: pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.4) both; }
+.anim-slide-up { animation: slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-fade-in { animation: fade-in 0.3s ease both; }
+.anim-badge-pop { animation: badge-pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.3) both; }
+
+/* ===== 深色模式：统一重映射层（引用到语义类上，避免逐个组件扫 dark: 前缀） ===== */
+.dark {
+  color-scheme: dark;
+}
+.dark body {
+  color: var(--color-slate-200);
+}
+.dark .card {
+  background-color: rgb(15 23 42 / 0.82);
+  border: 1px solid rgb(51 65 85 / 0.55);
+}
+.dark .input {
+  background-color: rgb(30 41 59 / 0.75);
+  color: var(--color-slate-100);
+}
+.dark .input::placeholder {
+  color: var(--color-slate-500);
+}
+.dark .sheet-btn {
+  background-color: rgb(30 41 59);
+  color: var(--color-slate-300);
+}
+.dark .modal-panel {
+  background-color: #0f172a;
+}
+.dark .toast-panel {
+  background-color: rgb(15 23 42 / 0.97);
+  border-color: rgb(51 65 85);
+}
+.dark .nav-panel {
+  background-color: rgb(15 23 42 / 0.92);
+  border-color: rgb(51 65 85 / 0.6);
+}
+.dark .text-slate-800 { color: var(--color-slate-200); }
+.dark .text-slate-700 { color: var(--color-slate-300); }
+.dark .text-slate-600 { color: var(--color-slate-300); }
+.dark .text-slate-500 { color: var(--color-slate-400); }
+.dark .text-slate-400 { color: var(--color-slate-500); }
+.dark .text-slate-300 { color: var(--color-slate-600); }
+.dark .divide-orange-50 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(51 65 85 / 0.6);
+}
+/* 壁纸柔化层：浅色压白，深色压暗 */
+.wallpaper-veil { background-color: rgb(255 255 255 / 0.35); }
+.dark .wallpaper-veil { background-color: rgb(2 6 23 / 0.4); }
