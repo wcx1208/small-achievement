@@ -19,3 +19,6 @@ Thumbs.db
 
 # AI Studio 项目元数据
 metadata.json
+
+# 交给 Argon 审查的干净副本（不进版本库）
+xiaochengjiu-review/
