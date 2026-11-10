@@ -15,3 +15,7 @@ android/app/src/main/assets/public/
 *.log
 .DS_Store
 Thumbs.db
+.playwright-cli/
+
+# AI Studio 项目元数据
+metadata.json

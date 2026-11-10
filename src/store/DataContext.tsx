@@ -3,13 +3,23 @@ import type { ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { App as CapApp } from '@capacitor/app'
 import { Preferences } from '@capacitor/preferences'
-import type { AppData, AppSettings, DiaryEntry, MoodLog, Note, Repeat, Task, Wallpaper } from '../data/types'
+import type {
+  AppData,
+  AppSettings,
+  DiaryEntry,
+  MoodLog,
+  Note,
+  Repeat,
+  Task,
+  TaskCategory,
+  Wallpaper,
+} from '../data/types'
 import * as storage from '../storage'
 import { BADGE_MAP, evaluateBadges } from '../data/badges'
 import type { BadgeDef } from '../data/badges'
 import { DEFAULT_TAGS, NOTE_COLORS } from '../data/presets'
 import { getStreak, getTodayStatus } from '../lib/stats'
-import { todayStr } from '../lib/date'
+import { isValidDateKey, todayStr } from '../lib/date'
 import { refreshWidgetNow } from '../plugins/widget'
 import { uid } from '../lib/uid'
 
@@ -49,23 +59,33 @@ interface DataContextValue {
   ready: boolean
   data: AppData
   today: string
+  /** 当前在「今日页」选中的查看/补卡日期（默认 today） */
+  selectedDate: string
+  setSelectedDate: (date: string) => void
   /** 启动时数据损坏或存储失败的一次性提示 */
   storageWarning: string | null
   corruptRaw: string | null
   dismissStorageWarning: () => void
+  /** 轻量级状态提示通知（替代原生 alert） */
+  notice: string | null
+  notify: (msg: string) => void
   /** 待展示的解锁徽章队列（一次可能连解多个） */
   badgeQueue: BadgeDef[]
   ackBadge: () => void
-  addTask: (title: string, repeat: Repeat) => Promise<boolean>
+  addTask: (title: string, repeat: Repeat, category?: TaskCategory) => Promise<boolean>
+  updateTask: (id: string, patch: { title?: string; repeat?: Repeat; category?: TaskCategory }) => Promise<boolean>
   renameTask: (id: string, title: string) => Promise<boolean>
   deleteTask: (id: string) => Promise<boolean>
   setArchived: (id: string, archived: boolean) => Promise<boolean>
-  toggleCheckIn: (taskId: string) => Promise<ToggleResult>
+  toggleCheckIn: (taskId: string, targetDate?: string) => Promise<ToggleResult>
+  addFocusSession: (input: { taskId?: string; taskTitle?: string; minutes: number; date?: string }) => Promise<boolean>
+  setWaterCups: (cups: number, targetDate?: string) => Promise<boolean>
   addMoodLog: (input: MoodInput) => Promise<boolean>
   deleteMoodLog: (id: string) => Promise<boolean>
-  saveDiary: (input: { id?: string; date: string; text: string }) => Promise<boolean>
+  saveDiary: (input: { id?: string; date: string; text: string; weather?: string; mood?: string }) => Promise<boolean>
   deleteDiary: (id: string) => Promise<boolean>
-  saveNote: (input: { id?: string; text: string; color?: string }) => Promise<boolean>
+  saveNote: (input: { id?: string; text: string; color?: string; pinned?: boolean }) => Promise<boolean>
+  togglePinNote: (id: string) => Promise<boolean>
   deleteNote: (id: string) => Promise<boolean>
   setWallpaper: (w: Wallpaper) => Promise<boolean>
   setCustomIcon: (dataUrl: string | null) => Promise<boolean>
@@ -80,11 +100,24 @@ const DataContext = createContext<DataContextValue | null | undefined>(undefined
 export function DataProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData | null>(null)
   const [today, setToday] = useState(todayStr())
+  const [selectedDate, setSelectedDateState] = useState(todayStr())
   const [badgeQueue, setBadgeQueue] = useState<BadgeDef[]>([])
   const [storageWarning, setStorageWarning] = useState<string | null>(null)
   const [corruptRaw, setCorruptRaw] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const noticeTimer = useRef<number | undefined>(undefined)
   const dataRef = useRef<AppData | null>(null)
   const saveChain = useRef<Promise<void>>(Promise.resolve())
+
+  const notify = useCallback((msg: string) => {
+    setNotice(msg)
+    window.clearTimeout(noticeTimer.current)
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 3200)
+  }, [])
+
+  const setSelectedDate = useCallback((d: string) => {
+    if (isValidDateKey(d)) setSelectedDateState(d)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -127,7 +160,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     let disposed = false
     const refresh = () => {
       const next = todayStr()
-      setToday((prev) => (prev === next ? prev : next))
+      setToday((prev) => {
+        if (prev !== next) {
+          setSelectedDateState((sel) => (sel === prev ? next : sel))
+          return next
+        }
+        return prev
+      })
     }
     const scheduleMidnight = () => {
       window.clearTimeout(timer)
@@ -197,32 +236,55 @@ export function DataProvider({ children }: { children: ReactNode }) {
         void syncWidget(next, currentDay)
         succeeded = true
       } catch (error) {
-        alert((error as Error).message || '保存失败，请稍后再试。')
+        notify((error as Error).message || '保存失败，请稍后再试。')
       }
     }
     const queued = saveChain.current.then(run, run)
     saveChain.current = queued
     await queued
     return succeeded
-  }, [])
+  }, [notify])
 
-  const addTask = useCallback(async (title: string, repeat: Repeat) => {
+  const addTask = useCallback(async (title: string, repeat: Repeat, category: TaskCategory = 'life') => {
     const clean = title.trim().slice(0, 60)
     if (!clean) return false
     return commit((current) => {
-      const task: Task = { id: uid(), title: clean, repeat, createdAt: Date.now(), archived: false }
+      const task: Task = {
+        id: uid(),
+        title: clean,
+        repeat,
+        category,
+        createdAt: Date.now(),
+        archived: false,
+      }
       return { ...current, tasks: [...current.tasks, task] }
     })
   }, [commit])
 
+  const updateTask = useCallback(
+    async (id: string, patch: { title?: string; repeat?: Repeat; category?: TaskCategory }) => {
+      const cleanTitle = patch.title !== undefined ? patch.title.trim().slice(0, 60) : undefined
+      if (cleanTitle !== undefined && !cleanTitle) return false
+      return commit((current) => ({
+        ...current,
+        tasks: current.tasks.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                ...(cleanTitle !== undefined ? { title: cleanTitle } : {}),
+                ...(patch.repeat !== undefined ? { repeat: patch.repeat } : {}),
+                ...(patch.category !== undefined ? { category: patch.category } : {}),
+              }
+            : t,
+        ),
+      }))
+    },
+    [commit],
+  )
+
   const renameTask = useCallback(async (id: string, title: string) => {
-    const clean = title.trim().slice(0, 60)
-    if (!clean) return false
-    return commit((current) => ({
-      ...current,
-      tasks: current.tasks.map((t) => (t.id === id ? { ...t, title: clean } : t)),
-    }))
-  }, [commit])
+    return updateTask(id, { title })
+  }, [updateTask])
 
   const deleteTask = useCallback(async (id: string) => {
     return commit((current) => ({ ...current, tasks: current.tasks.filter((t) => t.id !== id) }))
@@ -235,27 +297,64 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }))
   }, [commit])
 
-  const toggleCheckIn = useCallback(async (taskId: string): Promise<ToggleResult> => {
+  const toggleCheckIn = useCallback(async (taskId: string, targetDate?: string): Promise<ToggleResult> => {
     let result: ToggleResult = 'failed'
     const currentDay = todayStr()
     setToday((prev) => (prev === currentDay ? prev : currentDay))
+    const dateToUse = targetDate && isValidDateKey(targetDate) ? targetDate : selectedDate || currentDay
     const ok = await commit((current) => {
-      const existing = current.checkIns.find((c) => c.taskId === taskId && c.date === currentDay)
+      const existing = current.checkIns.find((c) => c.taskId === taskId && c.date === dateToUse)
       if (existing) {
         result = 'removed'
         return {
           ...current,
-          checkIns: current.checkIns.filter((c) => !(c.taskId === taskId && c.date === currentDay)),
+          checkIns: current.checkIns.filter((c) => !(c.taskId === taskId && c.date === dateToUse)),
         }
       }
       result = 'added'
       return {
         ...current,
-        checkIns: [...current.checkIns, { id: uid(), taskId, date: currentDay, completedAt: Date.now() }],
+        checkIns: [...current.checkIns, { id: uid(), taskId, date: dateToUse, completedAt: Date.now() }],
       }
     })
     return ok ? result : 'failed'
-  }, [commit])
+  }, [commit, selectedDate])
+
+  const addFocusSession = useCallback(
+    async (input: { taskId?: string; taskTitle?: string; minutes: number; date?: string }) => {
+      const minutes = Math.max(1, Math.round(input.minutes))
+      const date = input.date && isValidDateKey(input.date) ? input.date : todayStr()
+      return commit((current) => {
+        const nextSessions = [
+          ...(current.focusSessions ?? []),
+          {
+            id: uid(),
+            taskId: input.taskId,
+            taskTitle: input.taskTitle,
+            date,
+            minutes,
+            completedAt: Date.now(),
+          },
+        ]
+        return { ...current, focusSessions: nextSessions }
+      })
+    },
+    [commit],
+  )
+
+  const setWaterCups = useCallback(
+    async (cups: number, targetDate?: string) => {
+      const date = targetDate && isValidDateKey(targetDate) ? targetDate : selectedDate || todayStr()
+      const clamped = Math.min(16, Math.max(0, Math.round(cups)))
+      return commit((current) => {
+        const nextWater = { ...(current.waterLogs ?? {}) }
+        if (clamped <= 0) delete nextWater[date]
+        else nextWater[date] = clamped
+        return { ...current, waterLogs: nextWater }
+      })
+    },
+    [commit, selectedDate],
+  )
 
   const addMoodLog = useCallback(async (input: MoodInput) => {
     return commit((current) => {
@@ -275,45 +374,92 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [commit])
 
   /** 日记：新建或编辑（带 id 即编辑），updatedAt 记录最后修改时间 */
-  const saveDiary = useCallback(async (input: { id?: string; date: string; text: string }) => {
-    const text = input.text.trim()
-    if (!text) return false
-    return commit((current) => {
-      const now = Date.now()
-      let diaries: DiaryEntry[]
-      if (input.id) {
-        diaries = current.diaries.map((d) =>
-          d.id === input.id ? { ...d, date: input.date, text, updatedAt: now } : d,
-        )
-      } else {
-        diaries = [...current.diaries, { id: uid(), date: input.date, text, createdAt: now, updatedAt: now }]
-      }
-      return { ...current, diaries }
-    })
-  }, [commit])
+  const saveDiary = useCallback(
+    async (input: { id?: string; date: string; text: string; weather?: string; mood?: string }) => {
+      const text = input.text.trim()
+      if (!text) return false
+      return commit((current) => {
+        const now = Date.now()
+        let diaries: DiaryEntry[]
+        if (input.id) {
+          diaries = current.diaries.map((d) =>
+            d.id === input.id
+              ? {
+                  ...d,
+                  date: input.date,
+                  text,
+                  weather: input.weather,
+                  mood: input.mood,
+                  updatedAt: now,
+                }
+              : d,
+          )
+        } else {
+          diaries = [
+            ...current.diaries,
+            {
+              id: uid(),
+              date: input.date,
+              text,
+              weather: input.weather,
+              mood: input.mood,
+              createdAt: now,
+              updatedAt: now,
+            },
+          ]
+        }
+        return { ...current, diaries }
+      })
+    },
+    [commit],
+  )
 
   const deleteDiary = useCallback(async (id: string) => {
     return commit((current) => ({ ...current, diaries: current.diaries.filter((d) => d.id !== id) }))
   }, [commit])
 
   /** 便签：新建或编辑；不指定颜色时新便签随机取色 */
-  const saveNote = useCallback(async (input: { id?: string; text: string; color?: string }) => {
-    const text = input.text.trim()
-    if (!text) return false
-    return commit((current) => {
-      const now = Date.now()
-      let notes: Note[]
-      if (input.id) {
-        notes = current.notes.map((n) =>
-          n.id === input.id ? { ...n, text, color: input.color ?? n.color, updatedAt: now } : n,
-        )
-      } else {
-        const color = input.color ?? NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)].id
-        notes = [...current.notes, { id: uid(), text, color, createdAt: now, updatedAt: now }]
-      }
-      return { ...current, notes }
-    })
-  }, [commit])
+  const saveNote = useCallback(
+    async (input: { id?: string; text: string; color?: string; pinned?: boolean }) => {
+      const text = input.text.trim()
+      if (!text) return false
+      return commit((current) => {
+        const now = Date.now()
+        let notes: Note[]
+        if (input.id) {
+          notes = current.notes.map((n) =>
+            n.id === input.id
+              ? {
+                  ...n,
+                  text,
+                  color: input.color ?? n.color,
+                  pinned: input.pinned ?? n.pinned,
+                  updatedAt: now,
+                }
+              : n,
+          )
+        } else {
+          const color = input.color ?? NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)].id
+          notes = [
+            ...current.notes,
+            { id: uid(), text, color, pinned: input.pinned ?? false, createdAt: now, updatedAt: now },
+          ]
+        }
+        return { ...current, notes }
+      })
+    },
+    [commit],
+  )
+
+  const togglePinNote = useCallback(
+    async (id: string) => {
+      return commit((current) => ({
+        ...current,
+        notes: current.notes.map((n) => (n.id === id ? { ...n, pinned: !n.pinned, updatedAt: Date.now() } : n)),
+      }))
+    },
+    [commit],
+  )
 
   const deleteNote = useCallback(async (id: string) => {
     return commit((current) => ({ ...current, notes: current.notes.filter((n) => n.id !== id) }))
@@ -344,11 +490,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try {
       normalized = storage.normalizeBackup(raw)
     } catch (error) {
-      alert((error as Error).message || '备份格式不正确')
+      notify((error as Error).message || '备份格式不正确')
       return false
     }
     return commit(() => normalized, false)
-  }, [commit])
+  }, [commit, notify])
 
   const resetData = useCallback(async (mode: 'seed' | 'empty') => {
     return commit((current) =>
@@ -367,21 +513,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ready: true,
         data,
         today,
+        selectedDate,
+        setSelectedDate,
         storageWarning,
         corruptRaw,
         dismissStorageWarning,
+        notice,
+        notify,
         badgeQueue,
         ackBadge,
         addTask,
+        updateTask,
         renameTask,
         deleteTask,
         setArchived,
         toggleCheckIn,
+        addFocusSession,
+        setWaterCups,
         addMoodLog,
         deleteMoodLog,
         saveDiary,
         deleteDiary,
         saveNote,
+        togglePinNote,
         deleteNote,
         setWallpaper,
         setCustomIcon,

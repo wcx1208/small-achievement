@@ -4,14 +4,16 @@ import type {
   Badge,
   CheckIn,
   DiaryEntry,
+  FocusSession,
   MoodLog,
   Note,
   Task,
+  TaskCategory,
   ThemeMode,
   Wallpaper,
 } from '../data/types'
 import { BADGE_MAP } from '../data/badges'
-import { NOTE_COLORS, findPreset } from '../data/presets'
+import { NOTE_COLORS, TASK_CATEGORIES, findPreset } from '../data/presets'
 import { dateAt, isValidDateKey, todayStr } from '../lib/date'
 import { uid } from '../lib/uid'
 
@@ -51,6 +53,12 @@ function asTime(value: unknown, fallback: number): number {
 
 function asTheme(value: unknown): ThemeMode {
   return value === 'light' || value === 'dark' || value === 'auto' ? value : 'auto'
+}
+
+function asCategory(value: unknown): TaskCategory | undefined {
+  return typeof value === 'string' && TASK_CATEGORIES.some((c) => c.id === value)
+    ? (value as TaskCategory)
+    : undefined
 }
 
 export function defaultSettings(): AppSettings {
@@ -118,6 +126,7 @@ export function normalizeData(value: unknown): AppData {
   const badgeIds = new Set<string>()
   const diaryIds = new Set<string>()
   const noteIds = new Set<string>()
+  const focusIds = new Set<string>()
 
   const tasks: Task[] = []
   if (Array.isArray(raw.tasks)) {
@@ -128,10 +137,12 @@ export function normalizeData(value: unknown): AppData {
       const id = asId(item.id)
       if (taskIds.has(id)) continue
       taskIds.add(id)
+      const category = asCategory(item.category)
       tasks.push({
         id,
         title,
         repeat: item.repeat === 'daily' ? 'daily' : 'once',
+        ...(category ? { category } : {}),
         createdAt: asTime(item.createdAt, now),
         archived: item.archived === true,
       })
@@ -212,11 +223,15 @@ export function normalizeData(value: unknown): AppData {
       const id = asId(item.id)
       if (diaryIds.has(id)) continue
       const createdAt = asTime(item.createdAt, now)
+      const weather = asText(item.weather, 20).trim() || undefined
+      const mood = asText(item.mood, 20).trim() || undefined
       diaryIds.add(id)
       diaries.push({
         id,
         date: item.date,
         text,
+        ...(weather ? { weather } : {}),
+        ...(mood ? { mood } : {}),
         createdAt,
         updatedAt: Math.max(createdAt, asTime(item.updatedAt, createdAt)),
       })
@@ -240,9 +255,41 @@ export function normalizeData(value: unknown): AppData {
         id,
         text,
         color,
+        pinned: item.pinned === true,
         createdAt,
         updatedAt: Math.max(createdAt, asTime(item.updatedAt, createdAt)),
       })
+    }
+  }
+
+  const focusSessions: FocusSession[] = []
+  if (Array.isArray(raw.focusSessions)) {
+    for (const item of raw.focusSessions) {
+      if (!isRecord(item) || !isValidDateKey(item.date)) continue
+      const minutes = Math.min(240, Math.max(1, Math.round(Number(item.minutes) || 0)))
+      if (!minutes) continue
+      const id = asId(item.id)
+      if (focusIds.has(id)) continue
+      focusIds.add(id)
+      const taskId = asText(item.taskId, 100).trim() || undefined
+      const taskTitle = asText(item.taskTitle, 60).trim() || undefined
+      focusSessions.push({
+        id,
+        date: item.date,
+        minutes,
+        ...(taskId ? { taskId } : {}),
+        ...(taskTitle ? { taskTitle } : {}),
+        completedAt: asTime(item.completedAt, now),
+      })
+    }
+  }
+
+  const waterLogs: Record<string, number> = {}
+  if (isRecord(raw.waterLogs)) {
+    for (const [k, v] of Object.entries(raw.waterLogs)) {
+      if (!isValidDateKey(k)) continue
+      const cups = Math.min(16, Math.max(0, Math.round(Number(v) || 0)))
+      if (cups > 0) waterLogs[k] = cups
     }
   }
 
@@ -254,6 +301,8 @@ export function normalizeData(value: unknown): AppData {
     badges,
     diaries,
     notes,
+    focusSessions,
+    waterLogs,
     settings: normalizeSettings(raw.settings),
   }
 }
@@ -267,17 +316,19 @@ export function emptyData(settings: AppSettings = defaultSettings()): AppData {
     badges: [],
     diaries: [],
     notes: [],
+    focusSessions: [],
+    waterLogs: {},
     settings,
   }
 }
 
 function recordCount(data: AppData): number {
   return data.tasks.length + data.checkIns.length + data.moodLogs.length +
-    data.badges.length + data.diaries.length + data.notes.length
+    data.badges.length + data.diaries.length + data.notes.length + (data.focusSessions?.length ?? 0)
 }
 
 function rawRecordCount(raw: Record<string, unknown>): number {
-  return ['tasks', 'checkIns', 'moodLogs', 'badges', 'diaries', 'notes'].reduce((sum, key) => {
+  return ['tasks', 'checkIns', 'moodLogs', 'badges', 'diaries', 'notes', 'focusSessions'].reduce((sum, key) => {
     const value = raw[key]
     return sum + (Array.isArray(value) ? value.length : 0)
   }, 0)
@@ -301,30 +352,32 @@ export function createSeedData(): AppData {
   const now = Date.now()
   const today = todayStr()
 
-  const mkTask = (title: string, repeat: Task['repeat'], createdDaysAgo: number): Task => ({
+  const mkTask = (title: string, repeat: Task['repeat'], category: TaskCategory, createdDaysAgo: number): Task => ({
     id: uid(),
     title,
     repeat,
+    category,
     createdAt: dateAt(addDaysSafe(today, -createdDaysAgo), 8, 30) ?? now,
     archived: false,
   })
 
-  const walk = mkTask('晨间散步', 'daily', 9)
-  const water = mkTask('喝够 8 杯水', 'daily', 9)
-  const read = mkTask('阅读 10 页', 'daily', 8)
-  const desk = mkTask('收拾书桌', 'once', 7)
-  const tasks = [walk, water, read, desk]
+  const walk = mkTask('晨间散步 20 分钟', 'daily', 'health', 9)
+  const water = mkTask('喝够 8 杯温水', 'daily', 'health', 9)
+  const read = mkTask('睡前阅读 10 页书', 'daily', 'study', 8)
+  const meditate = mkTask('静心冥想 5 分钟', 'daily', 'mind', 6)
+  const desk = mkTask('整理书桌与充电线', 'once', 'life', 7)
+  const tasks = [walk, water, read, meditate, desk]
 
   // 近 8 天的打卡：每天至少 1 次（连胜 9 天，含今天），分布有疏密更真实
   const plan: [number, Task[]][] = [
     [-8, [walk, water, read]],
     [-7, [walk, water]],
     [-6, [walk, water, read]],
-    [-5, [walk, read]],
+    [-5, [walk, read, meditate]],
     [-4, [walk, water]],
-    [-3, [read, water]],
+    [-3, [read, water, meditate]],
     [-2, [walk, water, read]],
-    [-1, [walk, water]],
+    [-1, [walk, water, meditate]],
   ]
   const checkIns: CheckIn[] = []
   for (const [offset, list] of plan) {
@@ -346,28 +399,28 @@ export function createSeedData(): AppData {
       date: today,
       emoji: '😊',
       score: 5,
-      tags: ['开心'],
-      text: '散步完神清气爽，今天也要加油呀！',
+      tags: ['开心', '充实'],
+      text: '散步完神清气爽，阳光透过树叶特别好看，今天也要加油呀！',
       createdAt: now - 1.5 * 3600_000,
       relatedTaskId: walk.id,
     },
     {
       id: uid(),
-      date: addDaysSafe(today, -3),
+      date: addDaysSafe(today, -2),
       emoji: '🙂',
       score: 4,
-      tags: ['满足'],
-      text: '今天节奏刚刚好，读完书很满足。',
-      createdAt: dateAt(addDaysSafe(today, -3), 21, 30) ?? now,
+      tags: ['平静', '满足'],
+      text: '晚上留了半小时专心看书，不看短视频后睡眠都变踏实了。',
+      createdAt: dateAt(addDaysSafe(today, -2), 21, 30) ?? now,
     },
     {
       id: uid(),
-      date: addDaysSafe(today, -6),
+      date: addDaysSafe(today, -5),
       emoji: '😐',
       score: 3,
       tags: ['疲惫'],
-      text: '有点累，但还是把打卡完成了。',
-      createdAt: dateAt(addDaysSafe(today, -6), 22, 0) ?? now,
+      text: '今天事有点多，但还是把基础习惯坚持下来了，给自己点个赞。',
+      createdAt: dateAt(addDaysSafe(today, -5), 22, 0) ?? now,
     },
     {
       id: uid(),
@@ -375,7 +428,7 @@ export function createSeedData(): AppData {
       emoji: '🙂',
       score: 4,
       tags: ['期待', '开心'],
-      text: '开始记录的第一天，感觉不错！',
+      text: '开始记录的第一天，从最简单的小事做起！',
       createdAt: dateAt(addDaysSafe(today, -8), 21, 0) ?? now,
     },
   ]
@@ -387,21 +440,81 @@ export function createSeedData(): AppData {
     { id: 'streak-3', unlockedAt: dayTs(-6, 20) },
     { id: 'total-10', unlockedAt: dayTs(-5, 20) },
     { id: 'streak-7', unlockedAt: dayTs(-2, 20) },
+    { id: 'focus-1', unlockedAt: dayTs(-1, 21) },
   ]
 
   const diaries: DiaryEntry[] = [
     {
       id: uid(),
       date: today,
-      text: '今天开始用「小成就」记录自己。晚上散步的时候风很舒服，突然觉得坚持一件小事也没那么难，记一笔。',
+      weather: '☀️ 晴朗',
+      mood: '😊 开心',
+      text: '今天开始用「小成就」记录自己。早上出门散步的时候微风很舒服，突然觉得坚持一件小事也没那么难，不需要宏大的目标，只要每天给自己一点点正反馈就很好。',
       createdAt: now - 3 * 3600_000,
       updatedAt: now - 3 * 3600_000,
     },
+    {
+      id: uid(),
+      date: addDaysSafe(today, -3),
+      weather: '🍃 微风',
+      mood: '🙂 平静',
+      text: '今日三件小确幸：\n1. 买到了很甜的砂糖橘\n2. 睡前读完了第十章\n3. 按时喝够了八杯水',
+      createdAt: dayTs(-3, 21),
+      updatedAt: dayTs(-3, 21),
+    },
   ]
   const notes: Note[] = [
-    { id: uid(), text: '记得给妈妈打个电话 ☎️', color: 'amber', createdAt: now - 5 * 3600_000, updatedAt: now - 5 * 3600_000 },
-    { id: uid(), text: '周末想去的那家面馆\n导航搜「老周家」', color: 'sky', createdAt: now - 26 * 3600_000, updatedAt: now - 26 * 3600_000 },
+    {
+      id: uid(),
+      text: '记得周末给爸妈打个视频电话 ☎️',
+      color: 'amber',
+      pinned: true,
+      createdAt: now - 5 * 3600_000,
+      updatedAt: now - 5 * 3600_000,
+    },
+    {
+      id: uid(),
+      text: '想读的书单：\n· 《微习惯》\n· 《蛤蟆先生去看心理医生》',
+      color: 'sky',
+      pinned: false,
+      createdAt: now - 26 * 3600_000,
+      updatedAt: now - 26 * 3600_000,
+    },
+    {
+      id: uid(),
+      text: '累的时候就先做 5 分钟，开始本身就是胜利 🌱',
+      color: 'rose',
+      pinned: false,
+      createdAt: now - 48 * 3600_000,
+      updatedAt: now - 48 * 3600_000,
+    },
   ]
+
+  const focusSessions: FocusSession[] = [
+    {
+      id: uid(),
+      taskId: read.id,
+      taskTitle: read.title,
+      date: addDaysSafe(today, -1),
+      minutes: 25,
+      completedAt: dayTs(-1, 21),
+    },
+    {
+      id: uid(),
+      taskId: walk.id,
+      taskTitle: walk.title,
+      date: today,
+      minutes: 20,
+      completedAt: now - 2 * 3600_000,
+    },
+  ]
+
+  const waterLogs: Record<string, number> = {
+    [addDaysSafe(today, -3)]: 7,
+    [addDaysSafe(today, -2)]: 8,
+    [addDaysSafe(today, -1)]: 6,
+    [today]: 5,
+  }
 
   return {
     version: DATA_VERSION,
@@ -411,6 +524,8 @@ export function createSeedData(): AppData {
     badges,
     diaries,
     notes,
+    focusSessions,
+    waterLogs,
     settings: { ...defaultSettings(), wallpaper: { type: 'preset', value: 'sunrise' } },
   }
 }
@@ -438,8 +553,8 @@ function corruptResult(raw: string): LoadResult {
 export async function loadData(): Promise<LoadResult> {
   const rawText = localStorage.getItem(STORAGE_KEY)
   if (rawText === null) {
-    // 新用户从空白开始，避免把示例打卡误认为自己的成就；示例数据仍可从「我的」手动恢复。
-    const fresh = emptyData()
+    // 首次启动默认装载温暖的示例数据，方便立即体验打卡、连胜、热力图、日记与便签；在「我的」可一键清空。
+    const fresh = createSeedData()
     try {
       await saveData(fresh)
       return { data: fresh }
