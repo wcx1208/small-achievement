@@ -93,6 +93,8 @@ export interface AppSettings {
   customIcon?: string
   /** 外观主题 */
   theme: ThemeMode
+  /** 卡片通透度 0.3~1（1 = 完全不透明）；调低可让壁纸透过卡片 */
+  cardAlpha?: number
   /** 每日打卡提醒 */
   reminder: { enabled: boolean; time: string }
 }

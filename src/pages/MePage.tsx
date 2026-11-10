@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { useData } from '../store/DataContext'
 import { BADGES, BADGE_MAP, badgeStats } from '../data/badges'
-import { WALLPAPERS, findPreset } from '../data/presets'
+import { DEFAULT_WALLPAPER_ID, WALLPAPERS, findPreset } from '../data/presets'
 import { quoteOfTheDay } from '../data/quotes'
 import type { AppData, ThemeMode } from '../data/types'
 import { formatDateCN, formatTime, dateStr, todayStr, weekdayCN } from '../lib/date'
@@ -242,6 +242,8 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
 
   const [crop, setCrop] = useState<{ src: string; kind: 'wallpaper' | 'icon' } | null>(null)
   const [opacityDraft, setOpacityDraft] = useState(Math.round((wp.opacity ?? 1) * 100))
+  // 卡片通透度草稿：拖动时即时改 CSS 变量（不阻塞渲染），松手才落库
+  const [cardAlphaDraft, setCardAlphaDraft] = useState(Math.round((data.settings.cardAlpha ?? 1) * 100))
   const [posterOpen, setPosterOpen] = useState(false)
 
   const today = todayStr()
@@ -254,6 +256,11 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
   useEffect(() => {
     setOpacityDraft(Math.round((wp.opacity ?? 1) * 100))
   }, [wp.opacity])
+
+  const persistCardAlpha = () => {
+    const next = Math.min(100, Math.max(30, cardAlphaDraft)) / 100
+    if (next !== (data.settings.cardAlpha ?? 1)) void updateSettings({ cardAlpha: next })
+  }
 
   const persistOpacity = () => {
     if (wp.type !== 'image') return
@@ -667,20 +674,28 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
             <div className="grid grid-cols-4 gap-2.5">
               {WALLPAPERS.map((w) => {
                 const active = wp.type === 'preset' && wp.value === w.id
+                const isDefault = w.id === DEFAULT_WALLPAPER_ID
+                // 关键：预览必须与应用后的实际效果一致（深色模式取 darkCss），否则会"选了跟看到的不一样"
+                const previewCss = resolvedDark ? (w.darkCss ?? w.css) : w.css
                 return (
                   <button
                     key={w.id}
                     type="button"
                     onClick={() => void setWallpaper({ type: 'preset', value: w.id })}
                     className="flex min-h-[64px] flex-col items-center justify-center rounded-2xl py-1"
+                    aria-label={`壁纸 ${w.name}${isDefault ? '（默认）' : ''}`}
+                    aria-pressed={active}
                   >
                     <span
                       className={`block h-11 w-11 rounded-full border-2 shadow-xs transition duration-150 ${
-                        active ? 'scale-105 border-orange-500 ring-2 ring-orange-200' : 'border-white'
+                        active ? 'scale-105 border-orange-500 ring-2 ring-orange-200' : 'border-white dark:border-slate-600'
                       }`}
-                      style={{ background: w.css }}
+                      style={{ background: previewCss }}
                     />
-                    <span className="mt-1 text-xs text-slate-600">{w.name}</span>
+                    <span className={`mt-1 text-xs ${active ? 'font-semibold text-orange-500' : 'text-slate-600'}`}>
+                      {w.name}
+                      {isDefault && <span className="ml-0.5 text-[10px] text-orange-400">·默认</span>}
+                    </span>
                   </button>
                 )
               })}
@@ -689,9 +704,21 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
               🖼 上传自定义照片壁纸（可裁切）
               <input type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e, 'wallpaper')} />
             </label>
-            <p className="mt-2 text-xs text-slate-500">
-              当前：{wp.type === 'preset' ? (findPreset(wp.value)?.name ?? '晨光') : '自定义图片'}
-            </p>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-xs text-slate-500">
+                当前：{wp.type === 'preset' ? (findPreset(wp.value)?.name ?? '晨光') : '自定义图片'}
+                {resolvedDark && <span className="ml-1 text-[11px] text-slate-400">（深色模式·夜间版本）</span>}
+              </p>
+              {!(wp.type === 'preset' && wp.value === DEFAULT_WALLPAPER_ID) && (
+                <button
+                  type="button"
+                  onClick={() => void setWallpaper({ type: 'preset', value: DEFAULT_WALLPAPER_ID })}
+                  className="shrink-0 rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-600 transition active:scale-95 dark:bg-slate-800 dark:text-orange-400"
+                >
+                  恢复默认
+                </button>
+              )}
+            </div>
             {wp.type === 'image' && (
               <div className="mt-3">
                 <div className="flex items-center justify-between text-xs text-slate-500 tabular-nums">
@@ -759,6 +786,35 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
                   </button>
                 )
               })}
+            </div>
+
+            {/* 卡片通透度：调低即可让壁纸透过卡片 */}
+            <div className="mt-4 border-t border-white/50 pt-3 dark:border-slate-700/60">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span className="font-semibold text-slate-700 dark:text-slate-200">🪟 卡片通透度</span>
+                <span className="tabular-nums">{cardAlphaDraft}%</span>
+              </div>
+              <input
+                type="range"
+                min={30}
+                max={100}
+                step={5}
+                value={cardAlphaDraft}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setCardAlphaDraft(v)
+                  // 拖动即时生效：直接改 CSS 变量，无需等落库
+                  document.documentElement.style.setProperty('--card-alpha', String(v / 100))
+                }}
+                onPointerUp={persistCardAlpha}
+                onKeyUp={persistCardAlpha}
+                onBlur={persistCardAlpha}
+                className="mt-1 h-6 w-full accent-orange-500"
+                aria-label="卡片通透度"
+              />
+              <p className="text-[11px] text-slate-500">
+                调低后卡片变通透，能看见壁纸从卡片下面透出来；30% 时最透，100% 为完全不透明
+              </p>
             </div>
           </section>
 

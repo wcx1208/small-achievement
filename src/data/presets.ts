@@ -136,6 +136,9 @@ export const WALLPAPERS: WallpaperPreset[] = [
   },
 ]
 
+/** 应用默认壁纸（选择器里标记为「默认」，供一键恢复） */
+export const DEFAULT_WALLPAPER_ID = 'sunrise'
+
 export function findPreset(id: string): WallpaperPreset | undefined {
   return WALLPAPERS.find((w) => w.id === id)
 }

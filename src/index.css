@@ -24,6 +24,11 @@
   --water-gradient: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 55%, #2dd4bf 100%);
 
   /* 毛玻璃模糊度与饱和度 */
+  /* 卡片通透度（0.3~1，由设置页滑杆驱动；1 = 完全不透明） */
+  --card-alpha: 1;
+  /* 能量大卡更保守：避免透明过头压不住白字 */
+  --hero-alpha: 1;
+
   --glass-blur: 18px;
   --glass-blur-heavy: 24px;
   --glass-saturate: 170%;
@@ -31,15 +36,15 @@
   /* 渐变毛玻璃表面（Gradient Frosted Glass Surfaces） */
   --surface-card-gradient: linear-gradient(
     145deg,
-    rgb(255 255 255 / 0.88) 0%,
-    rgb(255 251 245 / 0.78) 55%,
-    rgb(255 244 230 / 0.72) 100%
+    rgb(255 255 255 / calc(0.88 * var(--card-alpha))) 0%,
+    rgb(255 251 245 / calc(0.78 * var(--card-alpha))) 55%,
+    rgb(255 244 230 / calc(0.72 * var(--card-alpha))) 100%
   );
   --surface-hero-glass: linear-gradient(
     135deg,
-    rgb(255 255 255 / 0.92) 0%,
-    rgb(255 243 224 / 0.82) 50%,
-    rgb(254 215 170 / 0.65) 100%
+    rgb(255 255 255 / calc(0.92 * var(--hero-alpha, 1))) 0%,
+    rgb(255 243 224 / calc(0.82 * var(--hero-alpha, 1))) 50%,
+    rgb(254 215 170 / calc(0.65 * var(--hero-alpha, 1))) 100%
   );
   --surface-water-glass: linear-gradient(
     135deg,
@@ -54,8 +59,8 @@
   );
   --surface-subcard-glass: linear-gradient(
     145deg,
-    rgb(255 255 255 / 0.78) 0%,
-    rgb(255 247 237 / 0.58) 100%
+    rgb(255 255 255 / calc(0.78 * var(--card-alpha))) 0%,
+    rgb(255 247 237 / calc(0.58 * var(--card-alpha))) 100%
   );
   --surface-nav-glass: linear-gradient(
     180deg,
@@ -96,15 +101,15 @@
   /* 深色渐变毛玻璃表面（流光暗夜质感） */
   --surface-card-gradient: linear-gradient(
     145deg,
-    rgb(30 41 59 / 0.82) 0%,
-    rgb(15 23 42 / 0.78) 60%,
-    rgb(15 23 42 / 0.72) 100%
+    rgb(30 41 59 / calc(0.82 * var(--card-alpha))) 0%,
+    rgb(15 23 42 / calc(0.78 * var(--card-alpha))) 60%,
+    rgb(15 23 42 / calc(0.72 * var(--card-alpha))) 100%
   );
   --surface-hero-glass: linear-gradient(
     135deg,
-    rgb(30 41 59 / 0.9) 0%,
-    rgb(15 23 42 / 0.85) 52%,
-    rgb(124 45 18 / 0.36) 100%
+    rgb(30 41 59 / calc(0.9 * var(--hero-alpha, 1))) 0%,
+    rgb(15 23 42 / calc(0.85 * var(--hero-alpha, 1))) 52%,
+    rgb(124 45 18 / calc(0.36 * var(--hero-alpha, 1))) 100%
   );
   --surface-water-glass: linear-gradient(
     135deg,
@@ -119,8 +124,8 @@
   );
   --surface-subcard-glass: linear-gradient(
     145deg,
-    rgb(30 41 59 / 0.72) 0%,
-    rgb(15 23 42 / 0.62) 100%
+    rgb(30 41 59 / calc(0.72 * var(--card-alpha))) 0%,
+    rgb(15 23 42 / calc(0.62 * var(--card-alpha))) 100%
   );
   --surface-nav-glass: linear-gradient(
     180deg,

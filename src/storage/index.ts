@@ -64,6 +64,7 @@ function asCategory(value: unknown): TaskCategory | undefined {
 export function defaultSettings(): AppSettings {
   return {
     wallpaper: { type: 'preset', value: 'sunrise' },
+  cardAlpha: 1,
     customTags: [],
     theme: 'auto',
     reminder: { enabled: false, time: '21:00' },
@@ -104,11 +105,16 @@ function normalizeSettings(value: unknown): AppSettings {
     ? reminderRaw.time
     : '21:00'
 
+  // 卡片通透度：0.3~1，非法值回落到完全不透明
+  const alphaRaw = typeof raw.cardAlpha === 'number' && Number.isFinite(raw.cardAlpha) ? raw.cardAlpha : 1
+  const cardAlpha = Math.min(1, Math.max(0.3, alphaRaw))
+
   const settings: AppSettings = {
     wallpaper: normalizeWallpaper(raw.wallpaper),
     customTags,
     theme: asTheme(raw.theme),
     reminder: { enabled: reminderRaw.enabled === true, time },
+    cardAlpha,
   }
   const icon = asText(raw.customIcon, MAX_ICON_DATA_URL + 1)
   if (icon.startsWith('data:image/') && icon.length <= MAX_ICON_DATA_URL) settings.customIcon = icon

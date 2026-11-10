@@ -118,6 +118,14 @@ function Shell() {
     return () => window.removeEventListener('xcj:root-back', onRootBack)
   }, [tab])
 
+  // 卡片通透度：写进 CSS 变量，所有 .card 的背景透明度实时跟随（1 = 不透明）
+  const cardAlphaSetting = ctx?.data.settings.cardAlpha ?? 1
+  useEffect(() => {
+    document.documentElement.style.setProperty('--card-alpha', String(cardAlphaSetting))
+    // 能量大卡用温和曲线：最低也有 0.72，保证上面白字仍然清晰
+    document.documentElement.style.setProperty('--hero-alpha', String(0.6 + 0.4 * cardAlphaSetting))
+  }, [cardAlphaSetting])
+
   if (!ctx || !ctx.ready) {
     return <AppSkeleton />
   }
