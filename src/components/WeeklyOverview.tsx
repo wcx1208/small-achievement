@@ -69,12 +69,12 @@ export function WeeklyOverview({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-[17px] font-bold text-slate-800 dark:text-slate-100">📅 周视图与补打卡</h2>
+            <h2 className="text-[17px] font-bold text-slate-800">📅 周视图与补打卡</h2>
             <span className="text-xs font-medium text-orange-500 tabular-nums">
               · 已打卡 {overview.activeDaysCount}/{overview.totalDaysCount} 天
             </span>
           </div>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 text-xs text-slate-500">
             点选过去日期可查看记录或补打卡
           </p>
         </div>
