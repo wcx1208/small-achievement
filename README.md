@@ -6,6 +6,13 @@
 
 以 Android APK（Capacitor 打包）与网页 PWA 两种形态发布，均可添加到手机主屏、全屏运行。
 
+**🌐 在线体验（网页版）**：<https://wcx1208.github.io/small-achievement/>
+
+> 手机浏览器打开上面的地址，菜单里选「添加到主屏幕」，即可全屏离线使用，体验与 APK 基本一致。
+> 数据保存在各自设备本地，网页版与 APK 的数据互不相通。
+
+**📦 下载安装包（APK）**：[Releases](https://github.com/wcx1208/small-achievement/releases/latest)
+
 ## 功能亮点（v1.6）
 
 - ✅ **习惯与待办打卡**：五大分类（🌿健康 / 📚学习 / ⚡效率 / 🏠生活 / 🧘身心）、内置「灵感习惯库」、近 7 日日历条回看与一键补打卡、任务支持重命名 / 归档 / 删除
