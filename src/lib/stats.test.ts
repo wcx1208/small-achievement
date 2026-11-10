@@ -16,6 +16,7 @@ import {
 import { evaluateBadges } from '../data/badges'
 import type { AppData, CheckIn, Task } from '../data/types'
 import { defaultSettings } from '../storage'
+import { addDays, todayStr } from './date'
 
 const sampleTasks: Task[] = [
   { id: 't1', title: '晨起喝水', repeat: 'daily', category: 'health', createdAt: 1000, archived: false },
@@ -112,7 +113,20 @@ test('focusSummary, getGrowthLevel, and evaluateBadges work with focus sessions 
     waterLogs: { '2026-11-08': 5 },
     settings: defaultSettings(),
   }
-  const unlocked = evaluateBadges(appData)
+  // 徽章判定以「今天」为基准计算连胜，这里用相对今天的三天，
+  // 避免测试写死日期后隔天就变红
+  const recentCheckIns: CheckIn[] = [0, 1, 2].map((i) => ({
+    id: `r${i}`,
+    taskId: 't1',
+    date: addDays(todayStr(), -i),
+    completedAt: 1000 + i,
+  }))
+  const unlocked = evaluateBadges({
+    ...appData,
+    checkIns: recentCheckIns,
+    focusSessions: [{ id: 'f1', date: todayStr(), minutes: 25, completedAt: 1000 }],
+    waterLogs: { [todayStr()]: 5 },
+  })
   assert.ok(unlocked.includes('first-checkin'))
   assert.ok(unlocked.includes('streak-3'))
   assert.ok(unlocked.includes('focus-1'))
