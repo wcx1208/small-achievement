@@ -426,16 +426,24 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
 
       {/* 今日成就日签海报弹窗（精致渐变背景 + 日期 + 能量 + 签名 + 复制/分享降级提示） */}
       <Modal open={posterOpen} onClose={() => setPosterOpen(false)}>
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-orange-500 via-amber-500 to-rose-400 p-5 text-white shadow-lg">
+        <div className="relative overflow-hidden rounded-3xl border border-white/35 bg-gradient-to-br from-orange-500 via-amber-500 to-rose-400 p-5 text-white shadow-xl">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/20 blur-2xl"
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-10 -left-10 h-36 w-36 rounded-full bg-rose-300/20 blur-2xl"
+          />
           {/* 顶部日期印章与成长能量徽标 */}
-          <div className="flex items-start justify-between border-b border-white/20 pb-3.5">
+          <div className="relative flex items-start justify-between border-b border-white/25 pb-3.5">
             <div>
               <p className="text-xs font-semibold tracking-wider text-white/90">🍊 小成就 · 每日成长日签</p>
               <h3 className="mt-1 text-[18px] font-bold tracking-tight tabular-nums">
                 {formatDateCN(today)} · 星期{weekdayCN(today)}
               </h3>
             </div>
-            <div className="rounded-2xl bg-white/20 px-3 py-1.5 text-right backdrop-blur-xs tabular-nums">
+            <div className="rounded-2xl border border-white/30 bg-white/20 px-3 py-1.5 text-right shadow-2xs backdrop-blur-xs tabular-nums">
               <p className="text-xs font-bold">
                 {growth.icon} Lv.{growth.level} {growth.title}
               </p>
@@ -444,35 +452,35 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
           </div>
 
           {/* 四宫格核心成就指标 */}
-          <div className="my-4 grid grid-cols-2 gap-2.5 text-center tabular-nums">
-            <div className="rounded-2xl bg-white/18 p-3 backdrop-blur-xs">
+          <div className="relative my-4 grid grid-cols-2 gap-2.5 text-center tabular-nums">
+            <div className="rounded-2xl border border-white/20 bg-white/18 p-3 shadow-2xs backdrop-blur-xs">
               <p className="text-[18px] font-extrabold text-white">🔥 {streak} 天</p>
               <p className="mt-0.5 text-xs text-white/85">连续打卡连胜</p>
             </div>
-            <div className="rounded-2xl bg-white/18 p-3 backdrop-blur-xs">
+            <div className="rounded-2xl border border-white/20 bg-white/18 p-3 shadow-2xs backdrop-blur-xs">
               <p className="text-[18px] font-extrabold text-white">
                 ✅ {todayStatus.completed}/{todayStatus.total}
               </p>
               <p className="mt-0.5 text-xs text-white/85">今日习惯达成</p>
             </div>
-            <div className="rounded-2xl bg-white/18 p-3 backdrop-blur-xs">
+            <div className="rounded-2xl border border-white/20 bg-white/18 p-3 shadow-2xs backdrop-blur-xs">
               <p className="text-[18px] font-extrabold text-white">🍅 {focus.todayMinutes} 分钟</p>
               <p className="mt-0.5 text-xs text-white/85">今日专注时长</p>
             </div>
-            <div className="rounded-2xl bg-white/18 p-3 backdrop-blur-xs">
+            <div className="rounded-2xl border border-white/20 bg-white/18 p-3 shadow-2xs backdrop-blur-xs">
               <p className="text-[18px] font-extrabold text-white">💧 {todayWater}/8 杯</p>
               <p className="mt-0.5 text-xs text-white/85">今日元气饮水</p>
             </div>
           </div>
 
           {/* 每日寄语与落款签名 */}
-          <blockquote className="rounded-2xl bg-black/15 p-3.5 font-serif text-[14px] leading-relaxed text-white/95">
+          <blockquote className="relative rounded-2xl border border-white/15 bg-black/15 p-3.5 font-serif text-[14px] leading-relaxed text-white/95">
             “{quoteOfTheDay(today)}”
           </blockquote>
 
-          <div className="mt-3.5 flex items-center justify-between text-xs text-white/90">
+          <div className="relative mt-3.5 flex items-center justify-between text-xs text-white/90">
             <span>✨ 每一件小事都算数</span>
-            <span className="font-serif italic">—— 致认真生活的自己</span>
+            <span className="font-serif italic tracking-wide">—— 致认真生活的自己</span>
           </div>
         </div>
 
@@ -677,6 +685,8 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
                 const isDefault = w.id === DEFAULT_WALLPAPER_ID
                 // 关键：预览必须与应用后的实际效果一致（深色模式取 darkCss），否则会"选了跟看到的不一样"
                 const previewCss = resolvedDark ? (w.darkCss ?? w.css) : w.css
+                // 图片壁纸：色块直接显示照片缩略图，一眼能认出是哪张
+                const isPhoto = w.kind === 'photo'
                 return (
                   <button
                     key={w.id}
@@ -690,7 +700,11 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
                       className={`block h-11 w-11 rounded-full border-2 shadow-xs transition duration-150 ${
                         active ? 'scale-105 border-orange-500 ring-2 ring-orange-200' : 'border-white dark:border-slate-600'
                       }`}
-                      style={{ background: previewCss }}
+                      style={
+                        isPhoto
+                          ? { backgroundImage: `url('${w.thumb}')`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                          : { background: previewCss }
+                      }
                     />
                     <span className={`mt-1 text-xs ${active ? 'font-semibold text-orange-500' : 'text-slate-600'}`}>
                       {w.name}
@@ -984,7 +998,7 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
         </div>
       </div>
 
-      <p className="pb-2 text-center text-xs text-slate-400">小成就 v1.5 · 温柔地陪你攒成就感 🍊</p>
+      <p className="pb-2 text-center text-xs text-slate-400">小成就 v1.7 · 温柔地陪你攒成就感 🍊</p>
 
       {/* 无损裁切弹窗：壁纸按屏幕比例，图标按 1:1 */}
       <CropModal

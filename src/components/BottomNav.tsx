@@ -1,3 +1,5 @@
+import { hapticTap } from '../lib/haptics'
+
 export type TabId = 'today' | 'journal' | 'stats' | 'me'
 
 const TABS: { id: TabId; icon: string; label: string }[] = [
@@ -12,7 +14,7 @@ interface BottomNavProps {
   onChange: (t: TabId) => void
 }
 
-/** 底部四 Tab 导航（移动端拇指热区直达 今日 / 手账 / 统计 / 我的） */
+/** 底部四 Tab 导航（移动端拇指热区直达 今日 / 手账 / 统计 / 我的，带触感反馈） */
 export function BottomNav({ tab, onChange }: BottomNavProps) {
   return (
     <nav
@@ -26,17 +28,20 @@ export function BottomNav({ tab, onChange }: BottomNavProps) {
             <button
               key={t.id}
               type="button"
-              onClick={() => onChange(t.id)}
-              className={`relative flex min-h-[56px] flex-col items-center justify-center gap-0.5 py-2 text-[11px] transition-all ${
-                active ? 'text-orange-500' : 'text-slate-400'
+              onClick={() => {
+                if (!active) hapticTap()
+                onChange(t.id)
+              }}
+              className={`relative flex min-h-[56px] flex-col items-center justify-center gap-0.5 py-2 text-[11px] transition-all active:scale-95 ${
+                active ? 'text-orange-500' : 'text-slate-400 dark:text-slate-500'
               }`}
             >
-              <span className={`text-xl transition-transform ${active ? 'scale-110' : 'scale-100 opacity-75'}`}>
+              <span className={`text-xl transition-transform duration-200 ${active ? 'scale-110' : 'scale-100 opacity-75'}`}>
                 {t.icon}
               </span>
               <span className={active ? 'font-bold' : 'font-medium'}>{t.label}</span>
               {active && (
-                <span className="absolute bottom-1 h-1 w-4 rounded-full bg-orange-500" />
+                <span className="absolute bottom-1 h-1 w-4 rounded-full bg-orange-500 shadow-xs" />
               )}
             </button>
           )

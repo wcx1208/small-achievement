@@ -10,7 +10,6 @@ import { ProgressRing } from '../components/ProgressRing'
 import { WeeklyOverview } from '../components/WeeklyOverview'
 import { QuickAdd, TaskList } from '../features/tasks/TaskList'
 import { MoodModal } from '../features/mood/MoodModal'
-import { MoodSection } from '../features/mood/MoodSection'
 import { DailyQuote } from '../features/rewards/DailyQuote'
 import { FocusModal } from '../features/focus/FocusModal'
 import type { FocusRunningState } from '../features/focus/FocusModal'
@@ -23,17 +22,18 @@ const THEME_BADGE: Record<ThemeMode, { icon: string; label: string }> = {
 }
 
 /**
- * 今日页（渐变毛玻璃 & 清晰信息层级版）：
- * 1. 顶部身份栏：日期问候 + 渐变毛玻璃等级能量徽标 + 三态主题快捷切换胶囊
- * 2. 最大视觉焦点（.glass-hero）：进度环 + 连胜看板 + 专注（带运行红点）/日记/便签毛玻璃快捷入口
- * 3. 核心行动区：待完成/已完成打卡清单（Finch 质感卡片） + 快速添加
- * 4. 回溯与情绪区：周视图横滑补打卡 + 心情速记 + 情绪手账流
- * 5. 页面最底部区域：水光渐变毛玻璃「💧 元气饮水站」（.glass-water） + 每日一签彩蛋
+ * 今日打卡页：
+ * 1. 顶部身份栏：日期问候 + 成长等级能量徽标 + 三态主题快捷胶囊
+ * 2. 核心主看板（.glass-hero）：进度环 + 连胜看板 + 专注（带运行红点）/日记/便签毛玻璃快捷入口
+ * 3. 待完成/已完成打卡清单（Finch 质感卡片） + 快速添加
+ * 4. 周视图横滑日历回溯补打卡 + 今日心情速记
+ * 5. 底部元气饮水站（.glass-water，8杯水快捷记录） + 每日一签彩蛋
  */
 export function TodayPage({
   showQuote,
   onOpenDiary,
   onOpenNotes,
+  onGoJournal,
   focusTrigger,
   onFocusRunningChange,
   onCycleTheme,
@@ -42,6 +42,7 @@ export function TodayPage({
   showQuote: (kind: 'task' | 'mood') => void
   onOpenDiary: () => void
   onOpenNotes: () => void
+  onGoJournal?: () => void
   focusTrigger?: number
   onFocusRunningChange?: (running: boolean) => void
   onCycleTheme?: () => void
@@ -156,186 +157,175 @@ export function TodayPage({
         </div>
       </header>
 
-      {/* 主体网格：移动端单列直达，桌面端双栏 */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start">
-        {/* 左栏（首屏核心行动区）：进度环+连胜主看板 → 今日打卡列表 → 快速添加 */}
-        <div className="stagger-list space-y-4 lg:col-span-7">
-          {/* 视觉焦点 1：暖光渐变毛玻璃进度环 + 连胜核心看板 (.glass-hero) */}
-          <section className="glass-hero">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute -top-12 -right-12 h-36 w-36 rounded-full bg-orange-400/20 blur-2xl dark:bg-orange-500/15"
-            />
-            <div className="relative flex items-center gap-4">
-              <ProgressRing
-                progress={status.total ? status.completed / status.total : 0}
-                size={96}
-                stroke={10}
-              >
-                <span className="text-[18px] font-bold leading-none text-slate-800 tabular-nums">
-                  {status.completed}
-                  <span className="text-xs font-normal text-slate-400">/{status.total}</span>
-                </span>
-                <span className="mt-1 text-[11px] text-slate-500">
-                  {activeDate === today ? '今日进度' : formatDateCN(activeDate)}
-                </span>
-              </ProgressRing>
+      {/* 主看板（.glass-hero）：圆环进度 + 连胜天数 + 3个快捷子卡 */}
+      <section className="glass-hero">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-12 -right-12 h-36 w-36 rounded-full bg-orange-400/20 blur-2xl dark:bg-orange-500/15"
+        />
+        <div className="relative flex items-center gap-4">
+          <ProgressRing
+            progress={status.total ? status.completed / status.total : 0}
+            size={96}
+            stroke={10}
+          >
+            <span className="text-[18px] font-bold leading-none text-slate-800 tabular-nums">
+              {status.completed}
+              <span className="text-xs font-normal text-slate-400">/{status.total}</span>
+            </span>
+            <span className="mt-1 text-[11px] text-slate-500">
+              {activeDate === today ? '今日进度' : formatDateCN(activeDate)}
+            </span>
+          </ProgressRing>
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-baseline justify-between gap-1">
-                  <p className="flex items-baseline gap-1.5 tabular-nums">
-                    <span className="text-2xl leading-none">🔥</span>
-                    <span className="text-2xl font-extrabold text-orange-500">{streak}</span>
-                    <span className="text-xs font-semibold text-slate-600">天连胜</span>
-                  </p>
-                  <span className="rounded-full bg-orange-500/12 px-2.5 py-0.5 text-xs font-semibold text-orange-600 tabular-nums dark:bg-orange-400/15 dark:text-orange-300">
-                    完成率 {status.total ? Math.round((status.completed / status.total) * 100) : 0}%
-                  </span>
-                </div>
-                <p className="mt-1.5 text-[14px] leading-relaxed text-slate-600">{heroText}</p>
-              </div>
-            </div>
-
-            {/* 看板底部三大高频毛玻璃子卡（番茄专注带运行中红点提示） */}
-            <div className="relative mt-4 grid grid-cols-3 gap-2.5 border-t border-white/50 pt-3.5 dark:border-slate-700/60">
-              <button
-                type="button"
-                onClick={() => {
-                  setFocusTask(null)
-                  setFocusOpen(true)
-                }}
-                className="glass-subcard relative flex min-h-[50px] flex-col items-center justify-center rounded-2xl px-2 py-2 text-center hover:border-orange-300 active:scale-95"
-              >
-                {focusState.running && (
-                  <span
-                    aria-label="专注进行中"
-                    className="absolute right-2.5 top-2 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900"
-                  />
-                )}
-                <span className="text-xs font-bold text-slate-800 whitespace-nowrap tabular-nums">
-                  🍅 {focusState.running ? `${focusMm}:${focusSs}` : '番茄专注'}
-                </span>
-                <span className="mt-0.5 text-[11px] text-slate-500 tabular-nums">
-                  {focusState.running ? '计时进行中' : `今日 ${focus.todayMinutes}m`}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onOpenDiary}
-                className="glass-subcard flex min-h-[50px] flex-col items-center justify-center rounded-2xl px-2 py-2 text-center hover:border-orange-300 active:scale-95"
-              >
-                <span className="text-xs font-bold text-slate-800 whitespace-nowrap">📖 岁月日记</span>
-                <span className="mt-0.5 text-[11px] text-slate-500 tabular-nums">
-                  {data.diaries.length} 篇记录
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onOpenNotes}
-                className="glass-subcard flex min-h-[50px] flex-col items-center justify-center rounded-2xl px-2 py-2 text-center hover:border-orange-300 active:scale-95"
-              >
-                <span className="text-xs font-bold text-slate-800 whitespace-nowrap">🗒️ 灵感便签</span>
-                <span className="mt-0.5 text-[11px] text-slate-500 tabular-nums">
-                  {data.notes.length} 张便签
-                </span>
-              </button>
-            </div>
-          </section>
-
-          {/* 视觉焦点 2：待完成 / 已完成打卡清单 */}
-          <div id="today-task-list-section" className="scroll-mt-20">
-            <TaskList
-              onChecked={(task, isRetroactive) => {
-                if (isRetroactive) {
-                  showQuote('task')
-                } else {
-                  setCheckin(task)
-                }
-              }}
-              onStartFocus={(task) => {
-                setFocusTask(task)
-                setFocusOpen(true)
-              }}
-            />
-          </div>
-
-          {/* 视觉焦点 3：快速添加新习惯 */}
-          <QuickAdd />
-        </div>
-
-        {/* 右栏（次级回溯与陪伴区）：周视图横滑补打卡 → 心情速记 → 情绪手账流 */}
-        <div className="stagger-list space-y-4 lg:col-span-5">
-          {/* 周视图横滑日历（查看过去几天或补打卡） */}
-          <WeeklyOverview
-            onJumpToTasks={() => {
-              document
-                .getElementById('today-task-list-section')
-                ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            }}
-            onOpenMood={() => {
-              setPreselectedMoodIdx(null)
-              setDiaryOpen(true)
-            }}
-            onOpenDiary={onOpenDiary}
-          />
-
-          {/* 心情速记毛玻璃卡 */}
-          <section className="card" aria-label="心情速记">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[17px] font-bold text-slate-800">🌤 心情速记</h2>
-              <span className="text-xs font-medium text-orange-500">点选表情即记</span>
-            </div>
-            <p className="mt-0.5 text-xs text-slate-500">接纳当下的每一种小情绪</p>
-            <div className="mt-3 grid grid-cols-5 gap-2">
-              {MOOD_OPTIONS.map((m, i) => (
-                <button
-                  key={m.emoji}
-                  type="button"
-                  onClick={() => {
-                    setPreselectedMoodIdx(i)
-                    setDiaryOpen(true)
-                  }}
-                  aria-label={`快速记录心情：${m.label}`}
-                  className="glass-subcard flex min-h-[54px] flex-col items-center justify-center rounded-2xl py-2 transition duration-150 hover:border-orange-300 active:scale-90"
-                >
-                  <span className="text-xl leading-none">{m.emoji}</span>
-                  <span className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                    {m.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setPreselectedMoodIdx(null)
-                setDiaryOpen(true)
-              }}
-              className="glass-subcard mt-3 flex min-h-[44px] w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-xs text-slate-600 transition duration-150 hover:border-orange-300 dark:text-slate-300"
-            >
-              <span className="truncate">
-                {todayMood
-                  ? `今日心情：${todayMood.emoji} ${todayMood.text || todayMood.tags.join('·') || '已记录'}`
-                  : '今天还没记心情，点此写一句'}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline justify-between gap-1">
+              <p className="flex items-baseline gap-1.5 tabular-nums">
+                <span className="text-2xl leading-none">🔥</span>
+                <span className="text-2xl font-extrabold text-orange-500">{streak}</span>
+                <span className="text-xs font-semibold text-slate-600">天连胜</span>
+              </p>
+              <span className="rounded-full bg-orange-500/12 px-2.5 py-0.5 text-xs font-semibold text-orange-600 tabular-nums dark:bg-orange-400/15 dark:text-orange-300">
+                完成率 {status.total ? Math.round((status.completed / status.total) * 100) : 0}%
               </span>
-              <span className="ml-2 shrink-0 font-semibold text-orange-500">去记录 ›</span>
-            </button>
-          </section>
-
-          {/* 情绪手账时间流 */}
-          <MoodSection
-            onWrite={() => {
-              setPreselectedMoodIdx(null)
-              setDiaryOpen(true)
-            }}
-          />
+            </div>
+            <p className="mt-1.5 text-[14px] leading-relaxed text-slate-600">{heroText}</p>
+          </div>
         </div>
+
+        {/* 看板底部三大高频毛玻璃子卡（番茄专注带运行中红点提示） */}
+        <div className="relative mt-4 grid grid-cols-3 gap-2.5 border-t border-white/50 pt-3.5 dark:border-slate-700/60">
+          <button
+            type="button"
+            onClick={() => {
+              setFocusTask(null)
+              setFocusOpen(true)
+            }}
+            className="glass-subcard relative flex min-h-[50px] flex-col items-center justify-center rounded-2xl px-2 py-2 text-center hover:border-orange-300 active:scale-95"
+          >
+            {focusState.running && (
+              <span
+                aria-label="专注进行中"
+                className="absolute right-2.5 top-2 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900"
+              />
+            )}
+            <span className="text-xs font-bold text-slate-800 whitespace-nowrap tabular-nums">
+              🍅 {focusState.running ? `${focusMm}:${focusSs}` : '番茄专注'}
+            </span>
+            <span className="mt-0.5 text-[11px] text-slate-500 tabular-nums">
+              {focusState.running ? '计时进行中' : `今日 ${focus.todayMinutes}m`}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenDiary}
+            className="glass-subcard flex min-h-[50px] flex-col items-center justify-center rounded-2xl px-2 py-2 text-center hover:border-orange-300 active:scale-95"
+          >
+            <span className="text-xs font-bold text-slate-800 whitespace-nowrap">📖 岁月日记</span>
+            <span className="mt-0.5 text-[11px] text-slate-500 tabular-nums">
+              {data.diaries.length} 篇记录
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenNotes}
+            className="glass-subcard flex min-h-[50px] flex-col items-center justify-center rounded-2xl px-2 py-2 text-center hover:border-orange-300 active:scale-95"
+          >
+            <span className="text-xs font-bold text-slate-800 whitespace-nowrap">🗒️ 灵感便签</span>
+            <span className="mt-0.5 text-[11px] text-slate-500 tabular-nums">
+              {data.notes.length} 张便签
+            </span>
+          </button>
+        </div>
+      </section>
+
+      {/* 打卡清单行动区（待完成 / 已完成打卡） */}
+      <div id="today-task-list-section" className="scroll-mt-20">
+        <TaskList
+          onChecked={(task, isRetroactive) => {
+            if (isRetroactive) {
+              showQuote('task')
+            } else {
+              setCheckin(task)
+            }
+          }}
+          onStartFocus={(task) => {
+            setFocusTask(task)
+            setFocusOpen(true)
+          }}
+        />
       </div>
 
-      {/* 页面最下方专属：水光蓝渐变毛玻璃「💧 元气饮水站」 */}
+      {/* 快速添加新习惯或待办 */}
+      <QuickAdd />
+
+      {/* 周视图横滑日历（查看过去几天或补打卡） */}
+      <WeeklyOverview
+        onJumpToTasks={() => {
+          document
+            .getElementById('today-task-list-section')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }}
+        onOpenMood={() => {
+          setPreselectedMoodIdx(null)
+          setDiaryOpen(true)
+        }}
+        onOpenDiary={onOpenDiary}
+      />
+
+      {/* 今日心情速记卡片（轻巧纯粹，不堆砌冗长历史，历史沉淀在手账） */}
+      <section className="card" aria-label="心情速记">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[17px] font-bold text-slate-800">🌤 今日心情速记</h2>
+          <span className="text-xs font-semibold text-orange-500">点选表情即记</span>
+        </div>
+        <p className="mt-0.5 text-xs text-slate-500">接纳当下的每一种小情绪，让心晴朗舒展</p>
+        <div className="mt-3 grid grid-cols-5 gap-2">
+          {MOOD_OPTIONS.map((m, i) => (
+            <button
+              key={m.emoji}
+              type="button"
+              onClick={() => {
+                setPreselectedMoodIdx(i)
+                setDiaryOpen(true)
+              }}
+              aria-label={`快速记录心情：${m.label}`}
+              className="glass-subcard flex min-h-[54px] flex-col items-center justify-center rounded-2xl py-2 transition duration-150 hover:border-orange-300 active:scale-90"
+            >
+              <span className="text-xl leading-none">{m.emoji}</span>
+              <span className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                {m.label}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (todayMood && onGoJournal) {
+              onGoJournal()
+            } else {
+              setPreselectedMoodIdx(null)
+              setDiaryOpen(true)
+            }
+          }}
+          className="glass-subcard mt-3 flex min-h-[44px] w-full items-center justify-between rounded-2xl px-3.5 py-2.5 text-xs text-slate-600 transition duration-150 hover:border-orange-300 dark:text-slate-300"
+        >
+          <span className="truncate">
+            {todayMood
+              ? `今日已记：${todayMood.emoji} ${todayMood.text || todayMood.tags.join(' · ') || '已记录'}`
+              : '今天还没写下一句心情，点此写写此刻感受'}
+          </span>
+          <span className="ml-2 shrink-0 font-semibold text-orange-500">
+            {todayMood && onGoJournal ? '情绪手账 ›' : '去记录 ›'}
+          </span>
+        </button>
+      </section>
+
+      {/* 按照用户需求明确置于下方的「💧 元气饮水站」 */}
       <section className="glass-water" aria-label="元气饮水站">
         <div
           aria-hidden="true"
@@ -455,7 +445,7 @@ export function TodayPage({
         }}
       />
 
-      {/* 番茄专注弹窗（支持后台持续计时与防误触二次确认） */}
+      {/* 番茄专注弹窗（支持后台持续计时与时间戳校准） */}
       <FocusModal
         open={focusOpen}
         task={focusTask}

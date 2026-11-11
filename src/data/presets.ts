@@ -83,6 +83,10 @@ export interface WallpaperPreset {
   name: string
   css: string
   darkCss: string
+  /** photo = 内置图片壁纸（public/wallpapers 下），选择器用缩略图而非纯色块 */
+  kind?: 'gradient' | 'photo'
+  /** photo 类型对应的缩略图地址 */
+  thumb?: string
 }
 
 export const WALLPAPERS: WallpaperPreset[] = [
@@ -133,6 +137,40 @@ export const WALLPAPERS: WallpaperPreset[] = [
     name: '星夜',
     css: 'linear-gradient(165deg, #273456 0%, #313E68 55%, #3F3664 100%)',
     darkCss: 'linear-gradient(165deg, #060913 0%, #11182D 55%, #1E1B38 100%)',
+  },
+  // ===== 内置图片壁纸 =====
+  // 用「柔化层 + 图片」两层背景：浅色压白保证深色文字可读，深色压暗保证白字可读
+  {
+    id: 'photo-starwish',
+    name: '星愿',
+    kind: 'photo',
+    thumb: 'wallpapers/starwish.webp',
+    css: "linear-gradient(rgba(255,250,245,0.34), rgba(255,250,245,0.30)), url('wallpapers/starwish.webp')",
+    darkCss: "linear-gradient(rgba(6,9,20,0.58), rgba(6,9,20,0.62)), url('wallpapers/starwish.webp')",
+  },
+  {
+    id: 'photo-blossom',
+    name: '花语',
+    kind: 'photo',
+    thumb: 'wallpapers/blossom.webp',
+    css: "linear-gradient(rgba(255,250,245,0.30), rgba(255,250,245,0.26)), url('wallpapers/blossom.webp')",
+    darkCss: "linear-gradient(rgba(6,9,20,0.56), rgba(6,9,20,0.60)), url('wallpapers/blossom.webp')",
+  },
+  {
+    id: 'photo-lantern',
+    name: '灯夜',
+    kind: 'photo',
+    thumb: 'wallpapers/lanternight.webp',
+    css: "linear-gradient(rgba(255,250,245,0.26), rgba(255,250,245,0.22)), url('wallpapers/lanternight.webp')",
+    darkCss: "linear-gradient(rgba(6,9,20,0.52), rgba(6,9,20,0.58)), url('wallpapers/lanternight.webp')",
+  },
+  {
+    id: 'photo-neonpaws',
+    name: '霓虹',
+    kind: 'photo',
+    thumb: 'wallpapers/neonpaws.webp',
+    css: "linear-gradient(rgba(255,250,245,0.28), rgba(255,250,245,0.24)), url('wallpapers/neonpaws.webp')",
+    darkCss: "linear-gradient(rgba(6,9,20,0.50), rgba(6,9,20,0.56)), url('wallpapers/neonpaws.webp')",
   },
 ]
 

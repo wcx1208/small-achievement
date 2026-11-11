@@ -325,6 +325,10 @@ function Shell() {
             showQuote={showQuote}
             onOpenDiary={() => setOverlay('diary')}
             onOpenNotes={() => setOverlay('notes')}
+            onGoJournal={() => {
+              setOverlay(null)
+              setTab('journal')
+            }}
             focusTrigger={focusTrigger}
             onFocusRunningChange={setFocusRunning}
             onCycleTheme={() => void cycleTheme()}
