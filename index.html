@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="小成就" />
+    <meta name="theme-color" content="#F97316" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>小成就 - 每日微习惯与情绪成长手账</title>
+    <meta name="description" content="温和无压力的微习惯打卡、番茄专注、心情记录与个人成长手账应用，用看得见的正反馈陪伴每一天。" />
+    <meta property="og:title" content="小成就 - 每日微习惯与情绪成长手账" />
+    <meta property="og:description" content="温和无压力的微习惯打卡、番茄专注、心情记录与个人成长手账应用，用看得见的正反馈陪伴每一天。" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      // 主题预应用：React 挂载前先上 dark 类，避免深色用户启动瞬间闪白屏
+      try {
+        var d = JSON.parse(localStorage.getItem('xiaochengjiu/data/v1') || 'null')
+        var t = d && d.settings && d.settings.theme
+        if (t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark')
+        }
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="./assets/index-Csv-2uNo.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DU2V1HRF.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
