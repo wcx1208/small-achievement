@@ -340,14 +340,16 @@ function rawRecordCount(raw: Record<string, unknown>): number {
   }, 0)
 }
 
-/** 导入前预检：兼容 {app,schema,data} 外壳，但必须至少包含任务和打卡数组 */
+/** 导入前预检：兼容 {app,schema,data} 外壳（备份文件顶层包装），但必须至少包含任务和打卡数组 */
 export function normalizeBackup(value: unknown): AppData {
   if (!isRecord(value)) throw new Error('备份根节点不是对象')
-  if (!Array.isArray(value.tasks) || !Array.isArray(value.checkIns)) {
+  // 外壳解包：允许 { app, schema, data: {...} } 形式的完整备份文件
+  const payload = isRecord(value.data) && Array.isArray((value.data as Record<string, unknown>).tasks) ? value.data : value
+  if (!Array.isArray(payload.tasks) || !Array.isArray(payload.checkIns)) {
     throw new Error('备份缺少任务或打卡数据')
   }
-  const normalized = normalizeData(value)
-  if (rawRecordCount(value) > 0 && recordCount(normalized) === 0) {
+  const normalized = normalizeData(payload)
+  if (rawRecordCount(payload) > 0 && recordCount(normalized) === 0) {
     throw new Error('备份中没有可识别的记录')
   }
   return normalized

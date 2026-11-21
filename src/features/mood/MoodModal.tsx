@@ -20,13 +20,12 @@ interface MoodModalProps {
 /** 心情记录弹窗：5 档 emoji + 一句话感受；日记模式额外支持日期补记与标签 */
 export function MoodModal({ open, mode, taskTitle, initialIdx = null, onClose, onSubmit, onSkip }: MoodModalProps) {
   const ctx = useData()
-  if (!ctx) return null
-  const { data, selectedDate } = ctx
+  // 所有 Hooks 必须在 early return 之前调用（Opus 报告 P1-7）
   const [idx, setIdx] = useState<number | null>(initialIdx)
   const [text, setText] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [custom, setCustom] = useState('')
-  const [date, setDate] = useState(selectedDate || todayStr())
+  const [date, setDate] = useState(todayStr())
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -35,10 +34,13 @@ export function MoodModal({ open, mode, taskTitle, initialIdx = null, onClose, o
       setText('')
       setTags([])
       setCustom('')
-      setDate(selectedDate || todayStr())
+      setDate(ctx?.selectedDate || todayStr())
       setSaving(false)
     }
-  }, [open, initialIdx, selectedDate])
+  }, [open, initialIdx, ctx?.selectedDate])
+
+  if (!ctx) return null
+  const { data, selectedDate } = ctx
 
   const toggleTag = (t: string) => setTags((ts) => (ts.includes(t) ? ts.filter((x) => x !== t) : [...ts, t]))
   const addCustom = () => {

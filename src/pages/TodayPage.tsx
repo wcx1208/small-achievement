@@ -11,8 +11,7 @@ import { WeeklyOverview } from '../components/WeeklyOverview'
 import { QuickAdd, TaskList } from '../features/tasks/TaskList'
 import { MoodModal } from '../features/mood/MoodModal'
 import { DailyQuote } from '../features/rewards/DailyQuote'
-import { FocusModal } from '../features/focus/FocusModal'
-import type { FocusRunningState } from '../features/focus/FocusModal'
+import { useFocus } from '../store/FocusContext'
 import { burstAt } from '../features/rewards/celebrate'
 
 const THEME_BADGE: Record<ThemeMode, { icon: string; label: string }> = {
@@ -34,8 +33,6 @@ export function TodayPage({
   onOpenDiary,
   onOpenNotes,
   onGoJournal,
-  focusTrigger,
-  onFocusRunningChange,
   onCycleTheme,
   themeMode = 'auto',
 }: {
@@ -43,31 +40,16 @@ export function TodayPage({
   onOpenDiary: () => void
   onOpenNotes: () => void
   onGoJournal?: () => void
-  focusTrigger?: number
-  onFocusRunningChange?: (running: boolean) => void
   onCycleTheme?: () => void
   themeMode?: ThemeMode
 }) {
   const ctx = useData()
+  const { focus: focusSnapshot, openModal } = useFocus()
   const [checkin, setCheckin] = useState<Task | null>(null)
   const [diaryOpen, setDiaryOpen] = useState(false)
   const [preselectedMoodIdx, setPreselectedMoodIdx] = useState<number | null>(null)
-  const [focusTask, setFocusTask] = useState<Task | null>(null)
-  const [focusOpen, setFocusOpen] = useState(false)
-  const [lastTrigger, setLastTrigger] = useState(focusTrigger ?? 0)
-  const [focusState, setFocusState] = useState<FocusRunningState>({
-    running: false,
-    secondsLeft: 25 * 60,
-    minutes: 25,
-  })
   const [waterBounceKey, setWaterBounceKey] = useState(0)
   const [lastTappedCup, setLastTappedCup] = useState<number | null>(null)
-
-  if (focusTrigger && focusTrigger !== lastTrigger) {
-    setLastTrigger(focusTrigger)
-    setFocusTask(null)
-    setFocusOpen(true)
-  }
 
   if (!ctx) return null
   const { data, addMoodLog, setWaterCups, today, selectedDate, notify } = ctx
@@ -113,8 +95,8 @@ export function TodayPage({
     }
   }
 
-  const focusMm = String(Math.floor(focusState.secondsLeft / 60)).padStart(2, '0')
-  const focusSs = String(focusState.secondsLeft % 60).padStart(2, '0')
+  const focusMm = String(Math.floor(focusSnapshot.secondsLeft / 60)).padStart(2, '0')
+  const focusSs = String(focusSnapshot.secondsLeft % 60).padStart(2, '0')
   const themeBadge = THEME_BADGE[themeMode]
 
   return (
@@ -197,23 +179,20 @@ export function TodayPage({
         <div className="relative mt-4 grid grid-cols-3 gap-2.5 border-t border-white/50 pt-3.5 dark:border-slate-700/60">
           <button
             type="button"
-            onClick={() => {
-              setFocusTask(null)
-              setFocusOpen(true)
-            }}
+            onClick={() => openModal(null)}
             className="glass-subcard relative flex min-h-[50px] flex-col items-center justify-center rounded-2xl px-2 py-2 text-center hover:border-orange-300 active:scale-95"
           >
-            {focusState.running && (
+            {focusSnapshot.status === 'running' && (
               <span
                 aria-label="专注进行中"
                 className="absolute right-2.5 top-2 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900"
               />
             )}
             <span className="text-xs font-bold text-slate-800 whitespace-nowrap tabular-nums">
-              🍅 {focusState.running ? `${focusMm}:${focusSs}` : '番茄专注'}
+              🍅 {focusSnapshot.status === 'running' ? `${focusMm}:${focusSs}` : '番茄专注'}
             </span>
             <span className="mt-0.5 text-[11px] text-slate-500 tabular-nums">
-              {focusState.running ? '计时进行中' : `今日 ${focus.todayMinutes}m`}
+              {focusSnapshot.status === 'running' ? '计时进行中' : `今日 ${focus.todayMinutes}m`}
             </span>
           </button>
 
@@ -251,10 +230,7 @@ export function TodayPage({
               setCheckin(task)
             }
           }}
-          onStartFocus={(task) => {
-            setFocusTask(task)
-            setFocusOpen(true)
-          }}
+          onStartFocus={(task) => openModal(task)}
         />
       </div>
 
@@ -445,17 +421,6 @@ export function TodayPage({
         }}
       />
 
-      {/* 番茄专注弹窗（支持后台持续计时与时间戳校准） */}
-      <FocusModal
-        open={focusOpen}
-        task={focusTask}
-        onClose={() => setFocusOpen(false)}
-        onCompleted={() => showQuote('task')}
-        onStateChange={(st) => {
-          setFocusState(st)
-          onFocusRunningChange?.(st.running)
-        }}
-      />
     </div>
   )
 }

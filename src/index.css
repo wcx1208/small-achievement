@@ -153,14 +153,14 @@
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
-    font-family: "Plus Jakarta Sans", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+    font-family: system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Noto Sans SC", sans-serif;
   }
   body {
     color: var(--text-primary);
     @apply antialiased transition-colors duration-200;
   }
   .font-serif {
-    font-family: "Noto Serif SC", Georgia, serif;
+    font-family: "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
   }
 }
 

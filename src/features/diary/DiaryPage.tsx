@@ -37,11 +37,13 @@ function DiaryPageInner({
   }, [onClose])
 
   const ctx = useData()
-  if (!ctx) return null
-  const { data, saveDiary, deleteDiary, today, notify } = ctx
+  // 所有 Hooks 必须在 early return 之前调用（Opus 报告 P1-7）
   const [editing, setEditing] = useState<DiaryEntry | 'new' | null>(null)
   const [query, setQuery] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  if (!ctx) return null
+  const { data, saveDiary, deleteDiary, today, notify } = ctx
 
   const sorted = [...data.diaries].sort((a, b) =>
     a.date === b.date ? b.createdAt - a.createdAt : a.date < b.date ? 1 : -1,

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { DataProvider, useData } from './store/DataContext'
+import { FocusProvider, useFocus } from './store/FocusContext'
+import { FocusModal } from './features/focus/FocusModal'
 import { BottomNav } from './components/BottomNav'
 import type { TabId } from './components/BottomNav'
 import { TodayPage } from './pages/TodayPage'
@@ -77,14 +79,14 @@ function Shell() {
   const [tab, setTab] = useState<TabId>('today')
   /** 全屏覆盖层页面：日记 / 便签 */
   const [overlay, setOverlay] = useState<'diary' | 'notes' | null>(null)
-  const [focusTrigger, setFocusTrigger] = useState(0)
-  const [focusRunning, setFocusRunning] = useState(false)
   const [quote, setQuote] = useState<{ text: string; key: number } | null>(null)
   const [resolvedDark, setResolvedDark] = useState<boolean>(() =>
     typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : false,
   )
   const timer = useRef<number | undefined>(undefined)
   const lastQuote = useRef<string | undefined>(undefined)
+
+  const { focus: globalFocus, openModal } = useFocus()
 
   const themeSetting: ThemeMode = ctx?.data.settings.theme ?? 'auto'
 
@@ -264,16 +266,12 @@ function Shell() {
 
             <button
               type="button"
-              onClick={() => {
-                setOverlay(null)
-                setTab('today')
-                setFocusTrigger((n) => n + 1)
-              }}
+              onClick={() => openModal(null)}
               className="btn-primary relative min-h-[44px] shrink-0 rounded-xl px-4 py-2 text-xs font-semibold whitespace-nowrap"
             >
-              🍅 {focusRunning ? '专注进行中' : '开启专注'}
-              {focusRunning && (
-                <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-red-200" />
+              🍅 {globalFocus.status === 'running' ? '专注进行中' : '开启专注'}
+              {globalFocus.status === 'running' && (
+                <span className="ml-1.5 inline-block h-2 w-2 rounded-full bg-red-200 animate-pulse" />
               )}
             </button>
           </div>
@@ -317,10 +315,7 @@ function Shell() {
         )}
 
         {/* TodayPage 保持挂载以维持后台专注计时器不中断，切换 Tab 时触发 150ms 淡入动效 */}
-        <div
-          key={tab === 'today' ? 'tab-today' : undefined}
-          className={tab === 'today' ? 'anim-tab-fade block' : 'hidden'}
-        >
+        <div className={tab === 'today' ? 'anim-tab-fade block' : 'hidden'}>
           <TodayPage
             showQuote={showQuote}
             onOpenDiary={() => setOverlay('diary')}
@@ -329,8 +324,6 @@ function Shell() {
               setOverlay(null)
               setTab('journal')
             }}
-            focusTrigger={focusTrigger}
-            onFocusRunningChange={setFocusRunning}
             onCycleTheme={() => void cycleTheme()}
             themeMode={themeSetting}
           />
@@ -373,6 +366,8 @@ function Shell() {
         </div>
       )}
 
+      {/* 全局番茄专注弹窗：状态在 FocusProvider 中，任何 Tab 触发都在这里渲染 */}
+      <FocusModal />
       <QuoteToast text={quote?.text ?? null} onDismiss={() => setQuote(null)} />
       {badgeQueue.length > 0 && <BadgeModal def={badgeQueue[0]} onClose={ackBadge} />}
     </div>
@@ -382,7 +377,9 @@ function Shell() {
 export default function App() {
   return (
     <DataProvider>
+      <FocusProvider>
       <Shell />
+      </FocusProvider>
     </DataProvider>
   )
 }

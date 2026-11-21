@@ -58,6 +58,37 @@ export function MePage({ onGoToday, resolvedDark }: { onGoToday?: () => void; re
 
 function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => void; resolvedDark?: boolean }) {
   const ctx = useData()
+  // 所有 Hooks 必须在 early return 之前调用（Opus 报告 P1-7）
+  const [confirmAction, setConfirmAction] = useState<'seed' | 'empty' | 'icon' | null>(null)
+  const [confirmTaskDeleteId, setConfirmTaskDeleteId] = useState<string | null>(null)
+  const [shareFallbackText, setShareFallbackText] = useState<string | null>(null)
+  const isNative = Capacitor.isNativePlatform()
+
+  const theme = ctx?.data.settings.theme ?? 'auto'
+  const reminder = ctx?.data.settings.reminder ?? { enabled: false, time: '21:00' }
+
+  useEffect(() => {
+    // 网页版不支持后台定时提醒，检测到误开启时自动回退
+    if (!isNative && reminder.enabled) {
+      void ctx?.updateSettings({ reminder: { ...reminder, enabled: false } })
+    }
+  }, [isNative, reminder, ctx?.updateSettings])
+
+  const [crop, setCrop] = useState<{ src: string; kind: 'wallpaper' | 'icon' } | null>(null)
+  const [opacityDraft, setOpacityDraft] = useState(100)
+  const [cardAlphaDraft, setCardAlphaDraft] = useState(100)
+  const [posterOpen, setPosterOpen] = useState(false)
+
+  // 壁纸浓度与卡片通透度草稿：跟随真实值同步
+  useEffect(() => {
+    const w = ctx?.data.settings.wallpaper
+    setOpacityDraft(Math.round(((w && w.type === 'image' ? w.opacity : undefined) ?? 1) * 100))
+  }, [ctx?.data.settings.wallpaper])
+
+  useEffect(() => {
+    setCardAlphaDraft(Math.round((ctx?.data.settings.cardAlpha ?? 1) * 100))
+  }, [ctx?.data.settings.cardAlpha])
+
   if (!ctx) return null
   const {
     data,
@@ -71,18 +102,6 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
     addTask,
     notify,
   } = ctx
-  const isNative = Capacitor.isNativePlatform()
-  const theme = data.settings.theme ?? 'auto'
-  const reminder = data.settings.reminder ?? { enabled: false, time: '21:00' }
-  const [confirmAction, setConfirmAction] = useState<'seed' | 'empty' | 'icon' | null>(null)
-  const [confirmTaskDeleteId, setConfirmTaskDeleteId] = useState<string | null>(null)
-  const [shareFallbackText, setShareFallbackText] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!isNative && reminder.enabled) {
-      void updateSettings({ reminder: { ...reminder, enabled: false } })
-    }
-  }, [isNative, reminder, updateSettings])
 
   const toggleReminder = async (enabled: boolean) => {
     if (enabled && !isNative) {
@@ -240,11 +259,8 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
     }))
   const wp = data.settings.wallpaper
 
-  const [crop, setCrop] = useState<{ src: string; kind: 'wallpaper' | 'icon' } | null>(null)
-  const [opacityDraft, setOpacityDraft] = useState(Math.round((wp.opacity ?? 1) * 100))
   // 卡片通透度草稿：拖动时即时改 CSS 变量（不阻塞渲染），松手才落库
-  const [cardAlphaDraft, setCardAlphaDraft] = useState(Math.round((data.settings.cardAlpha ?? 1) * 100))
-  const [posterOpen, setPosterOpen] = useState(false)
+
 
   const today = todayStr()
   const growth = getGrowthLevel(data, today)
@@ -253,9 +269,6 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
   const focus = focusSummary(data.focusSessions ?? [], today)
   const todayWater = (data.waterLogs ?? {})[today] ?? 0
 
-  useEffect(() => {
-    setOpacityDraft(Math.round((wp.opacity ?? 1) * 100))
-  }, [wp.opacity])
 
   const persistCardAlpha = () => {
     const next = Math.min(100, Math.max(30, cardAlphaDraft)) / 100
