@@ -1,94 +1,113 @@
+<div align="center">
+
 # 小成就 🍊
 
-> 一款温和无压力的微习惯与情绪成长手账：用看得见的正反馈，陪伴每一天的小事与心情。
+### _A gentle habit & mood companion — 温和无压力的微习惯与情绪成长手账_
 
-「小成就」面向想缓解拖延、积累成就感、看见自己情绪变化的个人用户。它不催促、不惩罚：每完成一件小事、每记录一次心情，都会得到即时、可见的正反馈——连胜天数、成长能量、徽章、彩带与触感，让记录这件事本身成为能量来源。所有数据只保存在本机，完全离线可用。
+**打卡 · 番茄专注 · 心情手账 · 成长等级 · 徽章 · 全部数据存本机**
 
-以 Android APK（Capacitor 打包）与网页 PWA 两种形态发布，均可添加到手机主屏、全屏运行。
+[![Release](https://img.shields.io/github/v/release/wcx1208/small-achievement?style=flat-square&logo=github)](https://github.com/wcx1208/small-achievement/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Web-orange?style=flat-square&logo=android)](https://github.com/wcx1208/small-achievement/releases)
+[![React](https://img.shields.io/badge/React-18-61dafb?style=flat-square&logo=react&logoColor=white)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/wcx1208/small-achievement/pulls)
 
-**🌐 在线体验（网页版）**：<https://wcx1208.github.io/small-achievement/>
+**English** · [中文](#-功能一览)
 
-> 手机浏览器打开上面的地址，菜单里选「添加到主屏幕」，即可全屏离线使用，体验与 APK 基本一致。
-> 数据保存在各自设备本地，网页版与 APK 的数据互不相通。
+A gentle, no-pressure habit tracker & mood journal. Every small win is celebrated — streaks, XP, badges, confetti and haptics — while **all data stays 100% on your device**. Ships as an Android APK and an offline-capable PWA from a single React codebase.
 
-**📦 下载安装包（APK）**：[Releases](https://github.com/wcx1208/small-achievement/releases/latest)
+</div>
 
-## 功能亮点（v1.6）
+---
 
-- ✅ **习惯与待办打卡**：五大分类（🌿健康 / 📚学习 / ⚡效率 / 🏠生活 / 🧘身心）、内置「灵感习惯库」、近 7 日日历条回看与一键补打卡、任务支持重命名 / 归档 / 删除
-- 🌱 **成长等级与成就能量**：打卡、番茄专注、写日记、记心情均可累积 ⚡ 能量，从 Lv.1 初萌新芽成长为 Lv.6 岁月收藏家（6 级）
-- 🍅 **番茄专注计时器**：5 / 15 / 25 / 45 分钟四档，可绑定具体习惯或自由专注；专注完成一键联动打卡，防误关、完成即通知
-- 💧 **元气饮水站**：8 杯水目标（2000ml），点按水滴即记饮水量
-- 🌤 **心情速记**：5 档心情表情一键直达情绪记录
-- 📖 **手账中心**：岁月日记（天气与心情印记，支持补记）· 灵感便签（置顶与标签过滤）· 情绪流，独立分栏聚合
-- ✨ **今日成就日签**：一键生成专属日签卡片，支持复制与系统分享
-- 🔥 **正反馈系统**：连胜天数、12 枚徽章（解锁彩带 + 触感反馈）、今日进度环、90 天打卡热力图、30 天心情趋势、坚持率（本周/本月）、高光时刻回顾、每日一签、时光回响
-- 🖼 **个性化**：8 套渐变壁纸 + 自定义照片壁纸（无损裁切、照片浓度调节）、深色模式（跟随系统/浅色/深色）、自定义 App 图标
-- 🔔 **每日提醒**：固定时刻提醒打卡（APK 内到点必达，重启后自动重排）
-- 💾 **数据自主**：全部数据只存本机，JSON 完整备份导出/导入、打卡记录 CSV 导出
-- 🏠 **桌面小组件**（APK）：连胜天数 + 今日完成度速览，点按直达应用
+## ✨ 功能一览
 
-## 可靠性设计
+<table>
+<tr>
+<td width="50%" valign="top">
 
-- 根级错误边界：意外渲染异常时优先引导导出原始数据，再尝试恢复
-- 损坏数据保护：存储损坏时自动切换安全空白模式，原始内容保留可下载
-- 存储层逐字段清洗与向后兼容：老版本数据升级无损
-- 安卓返回键层级处理：弹窗 → 覆盖页 → 非「今日」Tab 先回主页 → 再退出
+### ✅ 习惯与打卡
+- 五大分类（🌿健康 / 📚学习 / ⚡效率 / 🏠生活 / 🧘身心）
+- 每日 / 单次 / 灵感习惯库 / 近 7 日补打卡
+- 连胜天数与完成率看板
 
-## 技术栈
+### 🌱 成长等级
+- 打卡、番茄专注、写日记、记心情均可累积 ⚡ 成就能量
+- 6 级进阶：Lv.1 初萌新芽 → Lv.6 岁月收藏家
 
-React 18 + TypeScript + Vite + Tailwind CSS v4 + ECharts + canvas-confetti；移动优先的响应式设计，PWA（可添加到主屏、离线可用）；通过 [Capacitor](https://capacitorjs.com) 打包为 Android APK。
+### 🍅 番茄专注
+- 5 / 15 / 25 / 45 分钟四档，可绑定任务联动打卡
+- 挂钟计时：锁屏、后台不漂移；App 被杀自动恢复或补结算
+- APK 内到点系统通知必达
 
-数据层说明：所有数据存于浏览器 localStorage / APK 内置存储，经由独立的 storage 模块（异步接口 + 逐字段清洗 + 损坏保护）统一读写，便于日后替换为云端同步。
+</td>
+<td width="50%" valign="top">
 
-## 本地运行
+### 📖 手账中心
+- 岁月日记：天气与心情印记，支持补记
+- 灵感便签：置顶、标签过滤
+- 情绪流：5 档心情速记
+- 🕰 时光回响：随机重温往日记录
+
+### 🔥 正反馈系统
+- 12 枚徽章（解锁彩带 + 触感反馈）
+- 90 天打卡热力图、30 天心情趋势、坚持率
+- 每日一签、高光时刻回顾
+- 完成即彩带 + 震动
+
+### 🖼 个性化
+- 8 套渐变壁纸 + 4 张内置插画壁纸
+- 自定义照片壁纸（无损裁切 + 通透度调节）
+- 深色模式（跟随系统 / 浅色 / 深色）
+
+</td>
+</tr>
+</table>
+
+## 📱 界面预览
+
+| 今日打卡（浅色） | 今日打卡（深色 · 通透度 75%） |
+| :---: | :---: |
+| ![今日打卡-浅色](docs/screenshots/today-light.png) | ![今日打卡-深色](docs/screenshots/today-dark.png) |
+| **手账中心** | **成长统计** |
+| ![手账中心](docs/screenshots/journal-light.png) | ![成长统计](docs/screenshots/stats-light.png) |
+
+## 📥 安装
+
+**Android**：到 [Releases](https://github.com/wcx1208/small-achievement/releases/latest) 下载最新 APK 安装（允许"未知来源"即可）。
+
+**网页版（PWA）**：手机浏览器打开 [在线版](https://wcx1208.github.io/small-achievement/) → 菜单选「添加到主屏幕」→ 全屏离线使用。
+
+> 两种形态数据均存本机、互不相通；换机前用「我的 → 数据 → 导出备份」迁移。
+
+## 🛠 本地开发
 
 ```bash
 npm install
-npm run dev      # 开发（--host 已开，手机可通过局域网地址访问）
-npm run lint     # 仅类型检查
-npm run build    # 构建静态产物到 dist/
-npm run preview  # 预览构建产物
+npm run dev      # 开发服务器（局域网可访问）
+npm test         # 运行 12 个单元测试（stats + storage）
+npm run build    # 类型检查 + 构建静态产物
+npm run lint     # TypeScript 类型检查
 ```
 
-## 打包 Android APK
+### 打包 Android APK
 
 需要 JDK 17、Android SDK、Gradle 8.x：
 
 ```bash
 npm run build
 npx cap sync android
-cd android && ./gradlew :app:assembleDebug
-# 产物：android/app/build/outputs/apk/debug/app-debug.apk
+cd android && ./gradlew :app:assembleDebug   # 或 assembleRelease
+# 产物：android/app/build/outputs/apk/<debug|release>/app-*.apk
 ```
 
-> 注意：AGP 与 aapt 不接受含中文/空格的路径与文件名，构建与校验时请使用纯 ASCII 路径。
+正式签名：在 `android/keystore.properties` 配置签名信息（该文件与 keystore 均不进仓库）。
 
-## 目录结构
+## 🔒 隐私
 
-```
-src/
-├─ storage/          # 全局唯一读写入口（异步接口 + 逐字段清洗 + 损坏保护）
-├─ data/             # 类型定义、徽章规则、鼓励文案、壁纸与分类预设
-├─ lib/              # 日期、统计（连胜/坚持率/等级）、裁切几何、触感反馈
-├─ store/            # 全局数据上下文（动作 + 派生 + 小组件数据桥）
-├─ components/       # Modal / CropModal / WeeklyOverview / ProgressRing / ErrorBoundary 等
-├─ features/         # 任务 / 心情 / 日记 / 便签 / 专注 / 激励 / 统计 / 设置
-├─ pages/            # 今日打卡 / 成长统计 / 岁月日记 / 灵感便签 / 我的空间
-└─ plugins/          # 本地 Capacitor 插件（小组件即时刷新）
-public/              # PWA 清单、Service Worker、应用图标
-android/             # Capacitor 安卓工程（含桌面小组件）
-docs/                # 功能设计文档
-```
+所有记录只保存在本机（浏览器 localStorage / 应用内置存储），不上传任何服务器、无任何追踪。
 
-## 数据与隐私
+## 📄 License
 
-所有记录只保存在本机（浏览器 localStorage / 应用内置存储），不上传任何服务器。换设备前请使用「我的 → 数据 → 导出备份」。
-
-## 版本
-
-- 最新版本与安装包见 [Releases](https://github.com/wcx1208/small-achievement/releases)
-- v1.6：设计系统（CSS 变量双主题）与体验打磨，详见 Release 说明
-
----
-个人项目，仅供自用学习交流。
+[MIT](LICENSE) © 2026 wcx1208

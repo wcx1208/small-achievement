@@ -22,3 +22,7 @@ metadata.json
 
 # 交给 Argon 审查的干净副本（不进版本库）
 xiaochengjiu-review/
+
+# 签名密钥（本地保留，不进仓库）
+*.keystore
+keystore.properties
