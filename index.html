@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="小成就" />
+    <meta name="theme-color" content="#F97316" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>小成就 - 每日微习惯与情绪成长手账</title>
+    <meta name="description" content="温和无压力的微习惯打卡、番茄专注、心情记录与个人成长手账应用，用看得见的正反馈陪伴每一天。" />
+    <meta property="og:title" content="小成就 - 每日微习惯与情绪成长手账" />
+    <meta property="og:description" content="温和无压力的微习惯打卡、番茄专注、心情记录与个人成长手账应用，用看得见的正反馈陪伴每一天。" />
+    <script>
+      // 主题预应用：React 挂载前先上 dark 类，避免深色用户启动瞬间闪白屏
+      try {
+        var d = JSON.parse(localStorage.getItem('xiaochengjiu/data/v1') || 'null')
+        var t = d && d.settings && d.settings.theme
+        var dark = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        if (dark) document.documentElement.classList.add('dark')
+        // 状态栏颜色与首帧背景同步预应用，消除启动闪变（Opus 报告 P1-6）
+        var m = document.querySelector('meta[name="theme-color"]')
+        if (m) m.setAttribute('content', dark ? '#0B1120' : '#FFF3E4')
+        document.documentElement.style.backgroundColor = dark ? '#0B1120' : '#FFF3E4'
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="./assets/index-CiJI1haa.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-C8GY6iaB.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
