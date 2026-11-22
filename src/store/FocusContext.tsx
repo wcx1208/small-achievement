@@ -214,7 +214,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
 
   // 启动恢复：App 被杀后按持久化状态恢复倒计时或补结算（P1-4）
   useEffect(() => {
-    if (!ctx || hydratedRef.current) return
+    if (!ctx || !ctx.ready || hydratedRef.current) return
     hydratedRef.current = true
     let raw: string | null = null
     try {
@@ -376,11 +376,12 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     setModalOpen(true)
   }, [])
 
+  // 无条件重置 done 与 settledRef，彻底消除陈旧闭包依赖（Opus/Neon 报告 P0 #4）
   const closeModal = useCallback(() => {
     setModalOpen(false)
-    // done 状态下直接关闭视为已确认，清空结算结果防重复记账入口（P0-2）
-    if (done) setDone(null)
-  }, [done])
+    setDone(null)
+    settledRef.current = false
+  }, [])
 
   const setAlsoCheckInValue = useCallback((v: boolean) => {
     setAlsoCheckIn(v)

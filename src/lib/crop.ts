@@ -39,8 +39,9 @@ export function computeCropRect(
   const s = coverScale(natW, natH, frameW, frameH) * zoom
   const sw = frameW / s
   const sh = frameH / s
-  // 图像中心在框内坐标为 (frameW/2 + x, frameH/2 + y)，换回原图坐标求左上角
-  const sx = natW / 2 + x / s - sw / 2
-  const sy = natH / 2 + y / s - sh / 2
+  // 图像相对裁切框平移 (+x, +y) 时，裁切框中心落在原图 (natW/2 - x/s, natH/2 - y/s)——
+  // 拖右看左边、拖左看右边，与预览方向一致（修复前误写为 +x/s 导致方向相反）
+  const sx = natW / 2 - x / s - sw / 2
+  const sy = natH / 2 - y / s - sh / 2
   return { sx, sy, sw, sh }
 }

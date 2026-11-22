@@ -1,6 +1,6 @@
 /* 小成就 Service Worker：离线缓存（手写轻量版，无第三方依赖）
  * 策略：页面导航 network-first（保证更新及时），静态资源 stale-while-revalidate */
-const VERSION = 'v3'
+const VERSION = 'v4'
 const CACHE = `xcj-${VERSION}`
 const CORE = [
   './',
@@ -56,7 +56,7 @@ self.addEventListener('fetch', (e) => {
           if (res.ok) caches.open(CACHE).then((c) => c.put(req, res.clone()))
           return res
         })
-        .catch(() => cached)
+        .catch(() => cached ?? Response.error())
       return cached || fetched
     }),
   )

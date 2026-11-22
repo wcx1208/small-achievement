@@ -182,7 +182,7 @@ export function CropModal({ open, src, aspect, title, outMime, quality = 0.9, ma
       </div>
       <p className="mt-2 text-center text-[11px] text-slate-400">拖动调整位置，按原图分辨率裁切输出</p>
       <div className="mt-4 flex gap-2">
-        <button onClick={onCancel} className="shrink-0 rounded-2xl bg-slate-100 px-5 py-3 text-[15px] text-slate-500">
+        <button onClick={onCancel} className="shrink-0 rounded-2xl bg-slate-100 px-5 py-3 text-[15px] text-slate-500 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
           取消
         </button>
         <button onClick={confirm} disabled={!meta || !!error} className="btn-primary flex-1 disabled:opacity-40">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useData } from '../../store/DataContext'
 import { useFocus } from '../../store/FocusContext'
 import { Modal } from '../../components/Modal'
@@ -18,7 +18,6 @@ export function FocusModal() {
     focus,
     done,
     modalOpen,
-    modalTaskTitle,
     minutes,
     alsoCheckIn,
     setPresetMinutes,
@@ -31,8 +30,10 @@ export function FocusModal() {
     completeEarly,
     acknowledgeDone,
   } = useFocus()
+  // 所有 Hooks 必须在 early return 之前调用（Opus/Neon 报告 P0 #2）
+  const [confirmExit, setConfirmExit] = useState(false)
   if (!dataCtx) return null
-  const { data, notify } = dataCtx
+  const { data } = dataCtx
 
   const status = focus.status
   const totalSeconds = minutes * 60
@@ -52,7 +53,6 @@ export function FocusModal() {
     acknowledgeDone()
     closeModal()
   }
-  const [confirmExit, setConfirmExit] = useState(false)
 
   const startOrToggle = () => {
     if (status === 'paused') void resume()

@@ -7,7 +7,7 @@
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/lib/stats.test.ts src/storage/storage.test.ts",
+    "test": "tsx --test src/lib/stats.test.ts src/storage/storage.test.ts src/lib/crop.test.ts",
     "preview": "vite preview --host"
   },
   "dependencies": {

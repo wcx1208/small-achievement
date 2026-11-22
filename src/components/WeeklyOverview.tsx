@@ -24,11 +24,13 @@ export function WeeklyOverview({
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [rangeMode, setRangeMode] = useState<RangeMode>('7d')
 
-  if (!ctx) return null
-  const { data, today, selectedDate, setSelectedDate } = ctx
-  const activeDate = selectedDate || today
+  // 所有 Hooks 必须在 early return 之前调用（Opus/Neon 报告 P0 #3）
+  const data = ctx?.data
+  const today = ctx?.today ?? ''
+  const activeDate = ctx?.selectedDate || today
 
   const dayDates = useMemo(() => {
+    if (!today) return []
     if (rangeMode === 'week') {
       const wk = weekToDateDays(today)
       return wk.length >= 4 ? wk : lastNDays(7, today)
@@ -38,17 +40,13 @@ export function WeeklyOverview({
   }, [rangeMode, today])
 
   const overview = useMemo(
-    () => getWeeklyOverview(data, today, dayDates),
+    () => (data && today ? getWeeklyOverview(data, today, dayDates) : null),
     [data, today, dayDates],
   )
 
-  const selectedDayItem =
-    overview.days.find((d) => d.date === activeDate) ??
-    overview.days[overview.days.length - 1]
-
   useEffect(() => {
     const el = scrollRef.current
-    if (!el) return
+    if (!el || !activeDate) return
     const activeBtn = el.querySelector<HTMLElement>(`[data-date="${activeDate}"]`)
     if (activeBtn) {
       const targetLeft =
@@ -58,6 +56,12 @@ export function WeeklyOverview({
       el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' })
     }
   }, [rangeMode, activeDate])
+
+  if (!ctx || !overview) return null
+  const { setSelectedDate, notify } = ctx
+  const selectedDayItem =
+    overview.days.find((d) => d.date === activeDate) ??
+    overview.days[overview.days.length - 1]
 
   const scrollByOffset = (delta: number) => {
     scrollRef.current?.scrollBy({ left: delta, behavior: 'smooth' })

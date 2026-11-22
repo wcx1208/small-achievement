@@ -38,8 +38,8 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!this.state.error) return this.props.children
     const hasBackup = !!(getRawSnapshot() ?? getCorruptSnapshot())
     return (
-      <div className="grid min-h-dvh place-items-center bg-gradient-to-b from-orange-50 to-amber-100 px-6">
-        <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-xl">
+      <div className="grid min-h-dvh place-items-center bg-gradient-to-b from-orange-50 to-amber-100 px-6 dark:from-slate-950 dark:to-slate-900">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-xl dark:bg-slate-900 dark:border dark:border-slate-800">
           <p className="text-4xl">🍊</p>
           <h1 className="mt-3 text-lg font-bold text-slate-800">页面遇到了问题</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-500">
@@ -54,7 +54,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </button>
           <button
             onClick={() => window.location.reload()}
-            className="mt-2 w-full rounded-2xl bg-slate-100 py-3 text-sm font-medium text-slate-600"
+            className="mt-2 w-full rounded-2xl bg-slate-100 py-3 text-sm font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-200"
           >
             重新加载
           </button>
