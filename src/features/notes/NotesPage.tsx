@@ -14,21 +14,22 @@ export function NotesPage({ onClose, bg }: { onClose: () => void; bg: CSSPropert
 }
 
 function NotesPageInner({ onClose, bg }: { onClose: () => void; bg: CSSProperties }) {
-  useEffect(() => {
-    const onBack = () => onClose()
-    window.addEventListener('xcj:overlay-back', onBack)
-    return () => window.removeEventListener('xcj:overlay-back', onBack)
-  }, [onClose])
-
   const ctx = useData()
-  if (!ctx) return null
-  const { data, saveNote, togglePinNote, notify } = ctx
   const [draft, setDraft] = useState('')
   const [draftColor, setDraftColor] = useState('amber')
   const [filterColor, setFilterColor] = useState<string>('all')
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<Note | null>(null)
   const [adding, setAdding] = useState(false)
+
+  useEffect(() => {
+    const onBack = () => onClose()
+    window.addEventListener('xcj:overlay-back', onBack)
+    return () => window.removeEventListener('xcj:overlay-back', onBack)
+  }, [onClose])
+
+  if (!ctx) return null
+  const { data, saveNote, togglePinNote, notify } = ctx
 
   const sorted = [...data.notes].sort((a, b) => {
     if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1
@@ -234,8 +235,6 @@ function NotesPageInner({ onClose, bg }: { onClose: () => void; bg: CSSPropertie
 
 function NoteEditor({ note, onClose }: { note: Note | null; onClose: () => void }) {
   const ctx = useData()
-  if (!ctx) return null
-  const { saveNote, deleteNote, notify } = ctx
   const [text, setText] = useState('')
   const [color, setColor] = useState('amber')
   const [pinned, setPinned] = useState(false)
@@ -253,6 +252,9 @@ function NoteEditor({ note, onClose }: { note: Note | null; onClose: () => void 
       setPinned(Boolean(note.pinned))
     }
   }
+
+  if (!ctx) return null
+  const { saveNote, deleteNote, notify } = ctx
 
   return (
     <Modal open={note !== null} onClose={onClose} closeOnBackdrop={false}>

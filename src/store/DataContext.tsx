@@ -15,6 +15,7 @@ import type {
   Wallpaper,
 } from '../data/types'
 import * as storage from '../storage'
+import type { PreImportSnapshotMeta } from '../storage'
 import { BADGE_MAP, evaluateBadges } from '../data/badges'
 import type { BadgeDef } from '../data/badges'
 import { DEFAULT_TAGS, NOTE_COLORS } from '../data/presets'
@@ -72,6 +73,9 @@ interface DataContextValue {
   /** 待展示的解锁徽章队列（一次可能连解多个） */
   badgeQueue: BadgeDef[]
   ackBadge: () => void
+  /** 导入前自动留存的安全快照摘要 */
+  preImportSnapshotMeta: PreImportSnapshotMeta | null
+  restorePreImportSnapshot: () => Promise<boolean>
   addTask: (title: string, repeat: Repeat, category?: TaskCategory) => Promise<boolean>
   updateTask: (id: string, patch: { title?: string; repeat?: Repeat; category?: TaskCategory }) => Promise<boolean>
   renameTask: (id: string, title: string) => Promise<boolean>
@@ -104,8 +108,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [badgeQueue, setBadgeQueue] = useState<BadgeDef[]>([])
   const [storageWarning, setStorageWarning] = useState<string | null>(null)
   const [corruptRaw, setCorruptRaw] = useState<string | null>(null)
+  const [preImportSnapshotMeta, setPreImportSnapshotMeta] = useState<PreImportSnapshotMeta | null>(
+    () => storage.getPreImportSnapshotMeta(),
+  )
   const [notice, setNotice] = useState<string | null>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
+  const widgetSyncTimer = useRef<number | undefined>(undefined)
   const dataRef = useRef<AppData | null>(null)
   const saveChain = useRef<Promise<void>>(Promise.resolve())
 
@@ -113,6 +121,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setNotice(msg)
     window.clearTimeout(noticeTimer.current)
     noticeTimer.current = window.setTimeout(() => setNotice(null), 3200)
+  }, [])
+
+  const scheduleWidgetSync = useCallback((nextData: AppData, day = todayStr()) => {
+    window.clearTimeout(widgetSyncTimer.current)
+    widgetSyncTimer.current = window.setTimeout(() => {
+      void syncWidget(nextData, day)
+    }, 300)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(noticeTimer.current)
+      window.clearTimeout(widgetSyncTimer.current)
+    }
   }, [])
 
   const setSelectedDate = useCallback((d: string) => {
@@ -140,6 +162,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setData(hydrated)
         setStorageWarning(result.warning ?? null)
         setCorruptRaw(result.corruptRaw ?? null)
+        setPreImportSnapshotMeta(storage.getPreImportSnapshotMeta())
         void syncWidget(hydrated)
       } catch (error) {
         if (cancelled) return
@@ -233,7 +256,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
         const currentDay = todayStr()
         setToday((prev) => (prev === currentDay ? prev : currentDay))
-        void syncWidget(next, currentDay)
+        if (next.tasks !== current.tasks || next.checkIns !== current.checkIns) {
+          scheduleWidgetSync(next, currentDay)
+        }
         succeeded = true
       } catch (error) {
         notify((error as Error).message || '保存失败，请稍后再试。')
@@ -243,7 +268,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveChain.current = queued
     await queued
     return succeeded
-  }, [notify])
+  }, [notify, scheduleWidgetSync])
 
   const addTask = useCallback(async (title: string, repeat: Repeat, category: TaskCategory = 'life') => {
     const clean = title.trim().slice(0, 60)
@@ -286,8 +311,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return updateTask(id, { title })
   }, [updateTask])
 
+  /** 彻底删除任务：同步级联清理该任务的打卡记录，并移除心情/专注中失效的外键（保留记录本身） */
   const deleteTask = useCallback(async (id: string) => {
-    return commit((current) => ({ ...current, tasks: current.tasks.filter((t) => t.id !== id) }))
+    return commit((current) => ({
+      ...current,
+      tasks: current.tasks.filter((t) => t.id !== id),
+      checkIns: current.checkIns.filter((c) => c.taskId !== id),
+      moodLogs: current.moodLogs.map((m) => {
+        if (m.relatedTaskId !== id) return m
+        const { relatedTaskId: _removed, ...rest } = m
+        return rest
+      }),
+      focusSessions: (current.focusSessions ?? []).map((s) => {
+        if (s.taskId !== id) return s
+        const { taskId: _removed, ...rest } = s
+        return rest
+      }),
+    }))
   }, [commit])
 
   const setArchived = useCallback(async (id: string, archived: boolean) => {
@@ -484,16 +524,46 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return commit((current) => ({ ...current, settings: { ...current.settings, ...patch } }))
   }, [commit])
 
-  /** 导入备份：先完整清洗，全部合法后才替换，失败不会改变现有数据 */
+  /** 导入备份：先完整校验清洗，覆盖前自动保存安全快照并刷新 meta，失败不会改变现有数据 */
   const importData = useCallback(async (raw: unknown) => {
     let normalized: AppData
     try {
       normalized = storage.normalizeBackup(raw)
     } catch (error) {
-      notify((error as Error).message || '备份格式不正确')
+      notify(`导入未完成：${(error as Error).message || '备份文件格式无法识别'}`)
       return false
     }
-    return commit(() => normalized, false)
+    let nextMeta: storage.PreImportSnapshotMeta | null = null
+    let snapSaved = false
+    const ok = await commit((current) => {
+      const snap = storage.savePreImportSnapshot(current)
+      snapSaved = snap.ok
+      nextMeta = snap.meta
+      return normalized
+    }, false)
+    if (ok && snapSaved) setPreImportSnapshotMeta(nextMeta)
+    return ok
+  }, [commit, notify])
+
+  /** 一键回退到上一次导入前的数据快照 */
+  const restorePreImportSnapshot = useCallback(async () => {
+    const meta = storage.getPreImportSnapshotMeta()
+    const snapshot = storage.loadPreImportSnapshot()
+    if (!snapshot) {
+      setPreImportSnapshotMeta(null)
+      notify('未找到可恢复的导入前快照')
+      return false
+    }
+    const ok = await commit(() => snapshot, false)
+    if (!ok) return false
+    storage.clearPreImportSnapshot()
+    setPreImportSnapshotMeta(null)
+    notify(
+      meta?.strippedMedia
+        ? '已恢复到导入前的记录（自定义图片壁纸与图标因空间限制未包含在快照中）🌱'
+        : '已恢复到导入前的数据状态 🌱',
+    )
+    return true
   }, [commit, notify])
 
   const resetData = useCallback(async (mode: 'seed' | 'empty') => {
@@ -522,6 +592,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         notify,
         badgeQueue,
         ackBadge,
+        preImportSnapshotMeta,
+        restorePreImportSnapshot,
         addTask,
         updateTask,
         renameTask,

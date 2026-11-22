@@ -577,12 +577,12 @@ export function TaskList({ onChecked, onStartFocus }: TaskListProps) {
                 className="sheet-btn"
                 onClick={async () => {
                   if (await setArchived(menuTask.id, true)) {
-                    notify(`已归档「${menuTask.title}」`)
+                    notify(`已归档「${menuTask.title}」，历史打卡记录已保留`)
                     closeMenu()
                   }
                 }}
               >
-                📦 归档（移出今日列表，保留历史）
+                📦 归档（移出今日清单，保留打卡历史）
               </button>
               {!confirmDelete ? (
                 <button
@@ -590,22 +590,27 @@ export function TaskList({ onChecked, onStartFocus }: TaskListProps) {
                   className="sheet-btn text-red-500"
                   onClick={() => setConfirmDelete(true)}
                 >
-                  🗑 删除任务
+                  🗑 删除任务（同步清除打卡记录）
                 </button>
               ) : (
-                <button
-                  type="button"
-                  className="sheet-btn bg-red-500! font-semibold text-white!"
-                  onClick={async () => {
-                    const name = menuTask.title
-                    if (await deleteTask(menuTask.id)) {
-                      notify(`已删除「${name}」`)
-                      closeMenu()
-                    }
-                  }}
-                >
-                  确认删除「{menuTask.title}」（打卡统计保留）
-                </button>
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    className="sheet-btn bg-red-500! font-semibold text-white!"
+                    onClick={async () => {
+                      const name = menuTask.title
+                      if (await deleteTask(menuTask.id)) {
+                        notify(`已删除「${name}」及其打卡记录`)
+                        closeMenu()
+                      }
+                    }}
+                  >
+                    确认删除「{menuTask.title}」（同步清除打卡记录）
+                  </button>
+                  <p className="text-center text-xs text-slate-500">
+                    如需保留历史打卡与统计，请选上方「归档」
+                  </p>
+                </div>
               )}
               <button type="button" className="sheet-btn text-slate-500" onClick={closeMenu}>
                 取消

@@ -11,6 +11,11 @@ import type { ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { useData } from './DataContext'
+import {
+  clampFocusMinutes,
+  sanitizePersistedFocus,
+  type PersistedFocus,
+} from './focusSanitize'
 import { burstAt } from '../features/rewards/celebrate'
 import { hapticSuccess, hapticTap } from '../lib/haptics'
 
@@ -26,18 +31,6 @@ const FOCUS_ACTIVE_KEY = 'xiaochengjiu/focus/active'
 const FOCUS_DONE_NOTIFICATION_ID = 2002
 
 export type FocusStatus = 'idle' | 'running' | 'paused' | 'done'
-
-interface PersistedFocus {
-  status: 'running' | 'paused'
-  minutes: number
-  /** running 时的挂钟目标结束时间 */
-  targetEndTime: number | null
-  /** paused 时的剩余秒数 */
-  remainingAtPause: number | null
-  taskId: string | null
-  taskTitle: string | null
-  alsoCheckIn: boolean
-}
 
 export interface FocusDoneResult {
   minutes: number
@@ -90,6 +83,7 @@ function persist(a: PersistedFocus | null) {
 
 async function scheduleNative(target: number, taskTitle: string | null, minutes: number) {
   if (!Capacitor.isNativePlatform()) return
+  if (!Number.isFinite(target) || target <= Date.now()) return
   try {
     const perm = await LocalNotifications.checkPermissions()
     if (perm.display !== 'granted') return
@@ -138,15 +132,19 @@ export function FocusProvider({ children }: { children: ReactNode }) {
 
   /** 结算：落库 + 联动打卡 + 清持久化（settledRef 保证只执行一次） */
   const settle = useCallback(
-    (opts: { auto: boolean; viaRecovery?: boolean; session?: PersistedFocus }) => {
+    (opts: { auto: boolean; viaRecovery?: boolean; stale?: boolean; session?: PersistedFocus }) => {
       if (settledRef.current) return
       const a = opts.session ?? activeRef.current
       if (!a || !ctx) return
       settledRef.current = true
-      hapticSuccess()
-      burstAt(window.innerWidth / 2, window.innerHeight / 2)
-      // 原生端到点通知已由系统按预约时间发出；网页端在归零瞬间补发
+      const safeMinutes = clampFocusMinutes(a.minutes)
+      if (!opts.stale) {
+        hapticSuccess()
+        burstAt(window.innerWidth / 2, window.innerHeight / 2)
+      }
+      // 原生端到点通知已由系统按预约时间发出；网页端在归零瞬间补发（超龄补记不弹窗）
       if (
+        !opts.stale &&
         !Capacitor.isNativePlatform() &&
         typeof window !== 'undefined' &&
         'Notification' in window &&
@@ -155,8 +153,8 @@ export function FocusProvider({ children }: { children: ReactNode }) {
         try {
           new Notification('🍅 专注时间到！', {
             body: a.taskTitle
-              ? `「${a.taskTitle}」已完成 ${a.minutes} 分钟专注 ✨`
-              : `已完成 ${a.minutes} 分钟静心专注 ✨`,
+              ? `「${a.taskTitle}」已完成 ${safeMinutes} 分钟专注 ✨`
+              : `已完成 ${safeMinutes} 分钟静心专注 ✨`,
           })
         } catch {
           /* ignore */
@@ -165,7 +163,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
       void ctx.addFocusSession({
         taskId: a.taskId ?? undefined,
         taskTitle: a.taskTitle ?? '自由专注',
-        minutes: a.minutes,
+        minutes: safeMinutes,
         date: ctx.today,
       })
       if (
@@ -176,15 +174,18 @@ export function FocusProvider({ children }: { children: ReactNode }) {
         void ctx.toggleCheckIn(a.taskId, ctx.today)
       }
       persist(null)
+      activeRef.current = null
       setActive(null)
       void cancelNative()
-      setMinutes(a.minutes)
-      setDone({ minutes: a.minutes, taskId: a.taskId, taskTitle: a.taskTitle, auto: opts.auto })
-      ctx.notify(
-        opts.viaRecovery
-          ? `你在离开期间完成了一次 ${a.minutes} 分钟专注，已自动记录 🍅`
-          : `🎉 达成 ${a.minutes} 分钟静心专注！为你点赞 ✨`,
-      )
+      setMinutes(safeMinutes)
+      setDone({ minutes: safeMinutes, taskId: a.taskId, taskTitle: a.taskTitle, auto: opts.auto })
+      if (opts.stale) {
+        ctx.notify(`🍅 发现一次较早前的 ${safeMinutes} 分钟专注尚未收尾，已为你温和补记入账 ✨`)
+      } else if (opts.viaRecovery) {
+        ctx.notify(`你在离开期间完成了一次 ${safeMinutes} 分钟专注，已自动记入今日成就 🍅`)
+      } else {
+        ctx.notify(`🎉 达成 ${safeMinutes} 分钟静心专注！为你点赞 ✨`)
+      }
     },
     [ctx],
   )
@@ -212,7 +213,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     }
   }, [active, settle])
 
-  // 启动恢复：App 被杀后按持久化状态恢复倒计时或补结算（P1-4）
+  // 启动恢复：App 被杀后按持久化状态恢复倒计时、补结算或清理损坏/超龄会话（P1-4 / P2-5）
   useEffect(() => {
     if (!ctx || !ctx.ready || hydratedRef.current) return
     hydratedRef.current = true
@@ -224,28 +225,44 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     }
     if (!raw) return
     try {
-      const p = JSON.parse(raw) as PersistedFocus
-      if (p.status === 'running' && typeof p.targetEndTime === 'number' && p.targetEndTime > 0) {
-        if (p.targetEndTime > Date.now() + 1000) {
-          activeRef.current = p
-          setActive(p)
-          setMinutes(p.minutes)
-          setSecondsLeft(Math.ceil((p.targetEndTime - Date.now()) / 1000))
-          void scheduleNative(p.targetEndTime, p.taskTitle, p.minutes)
-          ctx.notify(`🍅 已恢复专注计时，剩余 ${Math.ceil((p.targetEndTime - Date.now()) / 60000)} 分钟`)
-        } else {
-          settle({ auto: true, viaRecovery: true, session: p })
-        }
+      const parsed = JSON.parse(raw) as unknown
+      const result = sanitizePersistedFocus(parsed)
+      if (result.kind === 'running') {
+        activeRef.current = result.session
+        setActive(result.session)
+        setMinutes(result.session.minutes)
+        setSecondsLeft(result.secondsLeft)
+        void scheduleNative(
+          result.session.targetEndTime as number,
+          result.session.taskTitle,
+          result.session.minutes,
+        )
+        const remainMin = Math.max(1, Math.ceil(result.secondsLeft / 60))
+        ctx.notify(`🍅 已为你接续专注计时，还剩 ${remainMin} 分钟`)
         return
       }
-      if (p.status === 'paused') {
-        activeRef.current = p
-        setActive(p)
-        setMinutes(p.minutes)
-        setSecondsLeft(p.remainingAtPause ?? p.minutes * 60)
+      if (result.kind === 'paused') {
+        activeRef.current = result.session
+        setActive(result.session)
+        setMinutes(result.session.minutes)
+        setSecondsLeft(result.secondsLeft)
+        return
       }
+      if (result.kind === 'settle-recovered') {
+        settle({ auto: true, viaRecovery: true, session: result.session })
+        return
+      }
+      if (result.kind === 'settle-stale') {
+        settle({ auto: true, viaRecovery: true, stale: true, session: result.session })
+        return
+      }
+      persist(null)
+      void cancelNative()
+      ctx.notify('上次专注计时状态异常，已为你自动重置，随时可以重新开始 🍅')
     } catch {
-      /* 持久化数据损坏时按空白处理 */
+      persist(null)
+      void cancelNative()
+      ctx.notify('上次专注计时状态异常，已为你自动重置，随时可以重新开始 🍅')
     }
   }, [ctx, settle])
 
@@ -264,10 +281,11 @@ export function FocusProvider({ children }: { children: ReactNode }) {
         /* ignore */
       }
     }
+    const safeMinutes = clampFocusMinutes(minutes)
     const next: PersistedFocus = {
       status: 'running',
-      minutes,
-      targetEndTime: Date.now() + minutes * 60_000,
+      minutes: safeMinutes,
+      targetEndTime: Date.now() + safeMinutes * 60_000,
       remainingAtPause: null,
       taskId: modalTask?.id ?? null,
       taskTitle: modalTask?.title ?? null,
@@ -275,7 +293,8 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     }
     activeRef.current = next
     setActive(next)
-    setSecondsLeft(minutes * 60)
+    setMinutes(safeMinutes)
+    setSecondsLeft(safeMinutes * 60)
     persist(next)
     settledRef.current = false
     hapticTap()
@@ -299,46 +318,64 @@ export function FocusProvider({ children }: { children: ReactNode }) {
   const resume = useCallback(async () => {
     const a = activeRef.current
     if (!a || a.status !== 'paused') return
-    const base = a.remainingAtPause ?? a.minutes * 60
+    const safeMinutes = clampFocusMinutes(a.minutes)
+    const rawRemaining = a.remainingAtPause
+    const base =
+      typeof rawRemaining === 'number' && Number.isFinite(rawRemaining) && rawRemaining > 0
+        ? Math.min(safeMinutes * 60, Math.ceil(rawRemaining))
+        : safeMinutes * 60
     if (base <= 0) return
     const next: PersistedFocus = {
       ...a,
+      minutes: safeMinutes,
       status: 'running',
       targetEndTime: Date.now() + base * 1000,
       remainingAtPause: null,
     }
     activeRef.current = next
     setActive(next)
+    setMinutes(safeMinutes)
     persist(next)
     const target = next.targetEndTime as number
     void scheduleNative(target, next.taskTitle, next.minutes)
   }, [])
 
   const reset = useCallback(() => {
+    const safeMinutes = clampFocusMinutes(minutes)
     activeRef.current = null
     setActive(null)
-    setSecondsLeft(minutes * 60)
+    setMinutes(safeMinutes)
+    setSecondsLeft(safeMinutes * 60)
     persist(null)
     void cancelNative()
     settledRef.current = false
   }, [minutes])
 
   const completeEarly = useCallback(async () => {
+    if (settledRef.current) return false
     const a = activeRef.current
     if (!a || !ctx) return false
-    const total = a.minutes * 60
-    const elapsed =
+    settledRef.current = true
+    const safeMinutes = clampFocusMinutes(a.minutes)
+    const total = safeMinutes * 60
+    const remaining =
       a.status === 'running' && a.targetEndTime
-        ? total - Math.max(0, Math.ceil((a.targetEndTime - Date.now()) / 1000))
-        : total - (a.remainingAtPause ?? 0)
-    const elapsedMin = Math.max(1, Math.round(elapsed / 60))
+        ? Math.max(0, Math.ceil((a.targetEndTime - Date.now()) / 1000))
+        : typeof a.remainingAtPause === 'number' && Number.isFinite(a.remainingAtPause)
+          ? Math.max(0, a.remainingAtPause)
+          : 0
+    const elapsed = Math.max(0, total - remaining)
+    const elapsedMin = clampFocusMinutes(Math.max(1, Math.round(elapsed / 60)), 1)
     const ok = await ctx.addFocusSession({
       taskId: a.taskId ?? undefined,
       taskTitle: a.taskTitle ?? '自由专注',
       minutes: elapsedMin,
       date: ctx.today,
     })
-    if (!ok) return false
+    if (!ok) {
+      settledRef.current = false
+      return false
+    }
     if (
       a.taskId &&
       a.alsoCheckIn &&
@@ -353,7 +390,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     burstAt(window.innerWidth / 2, window.innerHeight / 2)
     hapticSuccess()
     ctx.notify(`已完成 ${elapsedMin} 分钟专注 🍅`)
-    setMinutes(a.minutes)
+    setMinutes(safeMinutes)
     setDone({ minutes: elapsedMin, taskId: a.taskId, taskTitle: a.taskTitle, auto: false })
     return true
   }, [ctx])
@@ -367,9 +404,10 @@ export function FocusProvider({ children }: { children: ReactNode }) {
 
   const setPresetMinutes = useCallback((m: number) => {
     if (activeRef.current) return
-    setMinutes(m)
-    setSecondsLeft(m * 60)
-  }, [])
+    const safeMinutes = clampFocusMinutes(m, minutes)
+    setMinutes(safeMinutes)
+    setSecondsLeft(safeMinutes * 60)
+  }, [minutes])
 
   const openModal = useCallback((task: { id: string; title: string } | null) => {
     setModalTask(task)
@@ -395,28 +433,29 @@ export function FocusProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const focus: FocusSnapshot = useMemo(() => {
-    const total = minutes * 60
+    const safeMinutes = clampFocusMinutes(minutes)
+    const total = safeMinutes * 60
     let status: FocusStatus = 'idle'
-    let secondsLeft: number
+    let nextSecondsLeft: number
     if (done) {
       status = 'done'
-      secondsLeft = 0
+      nextSecondsLeft = 0
     } else if (active?.status === 'running') {
       status = 'running'
-      secondsLeft = active.targetEndTime
+      nextSecondsLeft = active.targetEndTime
         ? Math.max(0, Math.ceil((active.targetEndTime - Date.now()) / 1000))
         : 0
     } else if (active?.status === 'paused') {
       status = 'paused'
-      secondsLeft = active.remainingAtPause ?? 0
+      nextSecondsLeft = active.remainingAtPause ?? 0
     } else {
-      secondsLeft = total
+      nextSecondsLeft = total
     }
     return {
       status,
-      secondsLeft,
-      elapsedSeconds: Math.max(0, total - secondsLeft),
-      minutes,
+      secondsLeft: nextSecondsLeft,
+      elapsedSeconds: Math.max(0, total - nextSecondsLeft),
+      minutes: safeMinutes,
       taskId: active?.taskId ?? modalTask?.id ?? null,
       taskTitle: active?.taskTitle ?? modalTask?.title ?? null,
       alsoCheckIn: active?.alsoCheckIn ?? alsoCheckIn,
@@ -429,7 +468,7 @@ export function FocusProvider({ children }: { children: ReactNode }) {
     done,
     modalOpen,
     modalTaskTitle: modalTask?.title ?? focus.taskTitle,
-    minutes,
+    minutes: focus.minutes,
     alsoCheckIn: focus.alsoCheckIn,
     setPresetMinutes,
     setAlsoCheckIn: setAlsoCheckInValue,

@@ -23,10 +23,14 @@ import { uid } from '../lib/uid'
  */
 
 export const STORAGE_KEY = 'xiaochengjiu/data/v1'
+export const PRE_IMPORT_SNAPSHOT_KEY = 'xiaochengjiu/data/pre-import-snapshot'
 const CORRUPT_KEY = 'xiaochengjiu/data/corrupt'
+const FOCUS_ACTIVE_KEY = 'xiaochengjiu/focus/active'
 const DATA_VERSION = 1
 const MAX_WALLPAPER_DATA_URL = 1_200_000
 const MAX_ICON_DATA_URL = 800_000
+const SNAPSHOT_STRIP_THRESHOLD_BYTES = 800 * 1024
+const QUOTA_BYTES = 5 * 1024 * 1024
 
 export interface LoadResult {
   data: AppData
@@ -34,8 +38,42 @@ export interface LoadResult {
   corruptRaw?: string
 }
 
+export interface PreImportSnapshotMeta {
+  savedAt: number
+  tasksCount: number
+  checkInsCount: number
+  diariesCount: number
+  moodLogsCount: number
+  notesCount: number
+  focusCount: number
+  strippedMedia?: boolean
+}
+
+export interface StorageUsageInfo {
+  usedBytes: number
+  quotaBytes: number
+  percent: number
+  wallpaperBytes: number
+  iconBytes: number
+  recordsBytes: number
+  snapshotBytes: number
+}
+
+interface StoredPreImportSnapshot {
+  meta: PreImportSnapshotMeta
+  data: AppData
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function hasOwnField(obj: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(obj, key) && obj[key] !== undefined
+}
+
+function isFinitePositiveNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
 function asText(value: unknown, max = 5000): string {
@@ -48,7 +86,7 @@ function asId(value: unknown): string {
 }
 
 function asTime(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback
+  return isFinitePositiveNumber(value) ? value : fallback
 }
 
 function asTheme(value: unknown): ThemeMode {
@@ -61,10 +99,22 @@ function asCategory(value: unknown): TaskCategory | undefined {
     : undefined
 }
 
+function estimateBytes(text: string): number {
+  return text.length * 2
+}
+
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
 export function defaultSettings(): AppSettings {
   return {
     wallpaper: { type: 'preset', value: 'sunrise' },
-  cardAlpha: 1,
+    cardAlpha: 1,
     customTags: [],
     theme: 'auto',
     reminder: { enabled: false, time: '21:00' },
@@ -121,7 +171,7 @@ function normalizeSettings(value: unknown): AppSettings {
   return settings
 }
 
-/** 单一清洗入口：缺字段补默认值，非法记录直接丢弃，合法记录去重 */
+/** 单一清洗入口：缺字段补默认值，非法记录直接丢弃，合法记录去重并清理孤儿外键 */
 export function normalizeData(value: unknown): AppData {
   const raw = isRecord(value) ? value : {}
   const now = Date.now()
@@ -155,12 +205,13 @@ export function normalizeData(value: unknown): AppData {
     }
   }
 
+  // taskIds 已包含归档任务（archived: true），仅过滤已彻底删除任务的孤儿打卡
   const checkIns: CheckIn[] = []
   if (Array.isArray(raw.checkIns)) {
     for (const item of raw.checkIns) {
       if (!isRecord(item)) continue
       const taskId = asText(item.taskId, 100).trim()
-      if (!taskId || !isValidDateKey(item.date)) continue
+      if (!taskId || !taskIds.has(taskId) || !isValidDateKey(item.date)) continue
       const key = `${taskId}|${item.date}`
       if (checkInKeys.has(key)) continue
       checkInKeys.add(key)
@@ -194,7 +245,8 @@ export function normalizeData(value: unknown): AppData {
         }
       }
       const emoji = asText(item.emoji, 8).trim() || ['', '😣', '☹️', '😐', '🙂', '😊'][score]
-      const relatedTaskId = asText(item.relatedTaskId, 100).trim() || undefined
+      const rawRelatedTaskId = asText(item.relatedTaskId, 100).trim()
+      const relatedTaskId = rawRelatedTaskId && taskIds.has(rawRelatedTaskId) ? rawRelatedTaskId : undefined
       moodIds.add(id)
       moodLogs.push({
         id,
@@ -277,7 +329,8 @@ export function normalizeData(value: unknown): AppData {
       const id = asId(item.id)
       if (focusIds.has(id)) continue
       focusIds.add(id)
-      const taskId = asText(item.taskId, 100).trim() || undefined
+      const rawTaskId = asText(item.taskId, 100).trim()
+      const taskId = rawTaskId && taskIds.has(rawTaskId) ? rawTaskId : undefined
       const taskTitle = asText(item.taskTitle, 60).trim() || undefined
       focusSessions.push({
         id,
@@ -340,19 +393,227 @@ function rawRecordCount(raw: Record<string, unknown>): number {
   }, 0)
 }
 
-/** 导入前预检：兼容 {app,schema,data} 外壳（备份文件顶层包装），但必须至少包含任务和打卡数组 */
+function assertValidTimestampFields(item: Record<string, unknown>, fields: string[]) {
+  for (const field of fields) {
+    if (!hasOwnField(item, field)) continue
+    if (!isFinitePositiveNumber(item[field])) {
+      throw new Error('备份中含有异常的时间戳记录，为保护现有数据已取消导入')
+    }
+  }
+}
+
+function validateBackupBeforeNormalize(payload: Record<string, unknown>) {
+  if (Array.isArray(payload.tasks)) {
+    for (const item of payload.tasks) {
+      if (isRecord(item)) assertValidTimestampFields(item, ['createdAt'])
+    }
+  }
+
+  const dateCheckedCollections: { key: string; tsFields: string[] }[] = [
+    { key: 'checkIns', tsFields: ['completedAt'] },
+    { key: 'moodLogs', tsFields: ['createdAt'] },
+    { key: 'diaries', tsFields: ['createdAt', 'updatedAt'] },
+    { key: 'focusSessions', tsFields: ['completedAt'] },
+  ]
+
+  for (const { key, tsFields } of dateCheckedCollections) {
+    const list = payload[key]
+    if (!Array.isArray(list)) continue
+    for (const item of list) {
+      if (!isRecord(item)) continue
+      if (!isValidDateKey(item.date)) {
+        throw new Error('备份中含有无法识别的日期格式（需为 YYYY-MM-DD），为保护现有记录已取消导入')
+      }
+      assertValidTimestampFields(item, tsFields)
+    }
+  }
+
+  if (Array.isArray(payload.badges)) {
+    for (const item of payload.badges) {
+      if (isRecord(item)) assertValidTimestampFields(item, ['unlockedAt'])
+    }
+  }
+
+  if (Array.isArray(payload.notes)) {
+    for (const item of payload.notes) {
+      if (isRecord(item)) assertValidTimestampFields(item, ['createdAt', 'updatedAt'])
+    }
+  }
+
+  if (isRecord(payload.waterLogs)) {
+    for (const dateKey of Object.keys(payload.waterLogs)) {
+      if (!isValidDateKey(dateKey)) {
+        throw new Error('备份中含有无法识别的日期格式（需为 YYYY-MM-DD），为保护现有记录已取消导入')
+      }
+    }
+  }
+}
+
+/** 导入前预检：兼容 {app,schema,data} 外壳（备份文件顶层包装），严格校验脏日期与非法时间戳 */
 export function normalizeBackup(value: unknown): AppData {
-  if (!isRecord(value)) throw new Error('备份根节点不是对象')
+  if (!isRecord(value)) {
+    throw new Error('备份文件格式无法识别，请选择从「小成就」导出的 JSON 备份文件')
+  }
   // 外壳解包：允许 { app, schema, data: {...} } 形式的完整备份文件
   const payload = isRecord(value.data) && Array.isArray((value.data as Record<string, unknown>).tasks) ? value.data : value
   if (!Array.isArray(payload.tasks) || !Array.isArray(payload.checkIns)) {
-    throw new Error('备份缺少任务或打卡数据')
+    throw new Error('备份文件缺少任务或打卡数据，请检查文件是否完整')
   }
+  validateBackupBeforeNormalize(payload)
   const normalized = normalizeData(payload)
   if (rawRecordCount(payload) > 0 && recordCount(normalized) === 0) {
-    throw new Error('备份中没有可识别的记录')
+    throw new Error('备份文件中没有可识别的记录，已取消导入')
   }
   return normalized
+}
+
+function hasEmbeddedMedia(data: AppData): boolean {
+  return data.settings.wallpaper.type === 'image' || Boolean(data.settings.customIcon)
+}
+
+function stripSnapshotMedia(data: AppData): AppData {
+  const nextSettings: AppSettings = {
+    ...data.settings,
+    wallpaper: data.settings.wallpaper.type === 'image'
+      ? { type: 'preset', value: 'sunrise' }
+      : data.settings.wallpaper,
+  }
+  delete nextSettings.customIcon
+  return {
+    ...data,
+    settings: nextSettings,
+  }
+}
+
+/** 导入覆盖前保存安全快照；若含媒体超过 800KB 或写入触发配额异常，自动剥离壁纸与图标后重试 */
+export function savePreImportSnapshot(data: AppData): {
+  ok: boolean
+  meta: PreImportSnapshotMeta | null
+  strippedMedia: boolean
+} {
+  const baseMeta: PreImportSnapshotMeta = {
+    savedAt: Date.now(),
+    tasksCount: data.tasks.length,
+    checkInsCount: data.checkIns.length,
+    diariesCount: data.diaries.length,
+    moodLogsCount: data.moodLogs.length,
+    notesCount: data.notes.length,
+    focusCount: data.focusSessions?.length ?? 0,
+  }
+  const canStrip = hasEmbeddedMedia(data)
+  const fullPayload: StoredPreImportSnapshot = { meta: baseMeta, data }
+  const fullSerialized = JSON.stringify(fullPayload)
+
+  if (!canStrip || estimateBytes(fullSerialized) <= SNAPSHOT_STRIP_THRESHOLD_BYTES) {
+    try {
+      localStorage.setItem(PRE_IMPORT_SNAPSHOT_KEY, fullSerialized)
+      return { ok: true, meta: baseMeta, strippedMedia: false }
+    } catch {
+      if (!canStrip) {
+        return { ok: false, meta: null, strippedMedia: false }
+      }
+    }
+  }
+
+  const strippedMeta: PreImportSnapshotMeta = { ...baseMeta, strippedMedia: true }
+  const strippedPayload: StoredPreImportSnapshot = {
+    meta: strippedMeta,
+    data: stripSnapshotMedia(data),
+  }
+  try {
+    localStorage.setItem(PRE_IMPORT_SNAPSHOT_KEY, JSON.stringify(strippedPayload))
+    return { ok: true, meta: strippedMeta, strippedMedia: true }
+  } catch {
+    return { ok: false, meta: null, strippedMedia: false }
+  }
+}
+
+function readStoredSnapshot(): StoredPreImportSnapshot | null {
+  const raw = safeGetItem(PRE_IMPORT_SNAPSHOT_KEY)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!isRecord(parsed) || !isRecord(parsed.meta) || !isRecord(parsed.data)) return null
+    if (!isFinitePositiveNumber(parsed.meta.savedAt)) return null
+    const meta: PreImportSnapshotMeta = {
+      savedAt: parsed.meta.savedAt,
+      tasksCount: typeof parsed.meta.tasksCount === 'number' && Number.isFinite(parsed.meta.tasksCount) ? Math.max(0, Math.round(parsed.meta.tasksCount)) : 0,
+      checkInsCount: typeof parsed.meta.checkInsCount === 'number' && Number.isFinite(parsed.meta.checkInsCount) ? Math.max(0, Math.round(parsed.meta.checkInsCount)) : 0,
+      diariesCount: typeof parsed.meta.diariesCount === 'number' && Number.isFinite(parsed.meta.diariesCount) ? Math.max(0, Math.round(parsed.meta.diariesCount)) : 0,
+      moodLogsCount: typeof parsed.meta.moodLogsCount === 'number' && Number.isFinite(parsed.meta.moodLogsCount) ? Math.max(0, Math.round(parsed.meta.moodLogsCount)) : 0,
+      notesCount: typeof parsed.meta.notesCount === 'number' && Number.isFinite(parsed.meta.notesCount) ? Math.max(0, Math.round(parsed.meta.notesCount)) : 0,
+      focusCount: typeof parsed.meta.focusCount === 'number' && Number.isFinite(parsed.meta.focusCount) ? Math.max(0, Math.round(parsed.meta.focusCount)) : 0,
+      ...(parsed.meta.strippedMedia === true ? { strippedMedia: true } : {}),
+    }
+    return {
+      meta,
+      data: normalizeData(parsed.data),
+    }
+  } catch {
+    return null
+  }
+}
+
+export function getPreImportSnapshotMeta(): PreImportSnapshotMeta | null {
+  return readStoredSnapshot()?.meta ?? null
+}
+
+export function loadPreImportSnapshot(): AppData | null {
+  return readStoredSnapshot()?.data ?? null
+}
+
+export function clearPreImportSnapshot(): void {
+  try {
+    localStorage.removeItem(PRE_IMPORT_SNAPSHOT_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 估算本地存储各部分占用字节（按 UTF-16 2 bytes/char 计算，与 5MB 本地配额对齐） */
+export function getStorageUsage(): StorageUsageInfo {
+  const rawMain = safeGetItem(STORAGE_KEY) ?? ''
+  const rawSnapshot = safeGetItem(PRE_IMPORT_SNAPSHOT_KEY) ?? ''
+  const rawCorrupt = safeGetItem(CORRUPT_KEY) ?? ''
+  const rawFocus = safeGetItem(FOCUS_ACTIVE_KEY) ?? ''
+
+  const mainBytes = estimateBytes(rawMain)
+  const snapshotBytes = estimateBytes(rawSnapshot)
+  const corruptBytes = estimateBytes(rawCorrupt)
+  const focusBytes = estimateBytes(rawFocus)
+  const usedBytes = mainBytes + snapshotBytes + corruptBytes + focusBytes
+
+  let wallpaperBytes = 0
+  let iconBytes = 0
+  if (rawMain) {
+    try {
+      const parsed = JSON.parse(rawMain) as unknown
+      if (isRecord(parsed) && isRecord(parsed.settings)) {
+        const wp = parsed.settings.wallpaper
+        if (isRecord(wp) && wp.type === 'image' && typeof wp.value === 'string') {
+          wallpaperBytes = Math.min(mainBytes, estimateBytes(wp.value))
+        }
+        if (typeof parsed.settings.customIcon === 'string') {
+          iconBytes = Math.min(Math.max(0, mainBytes - wallpaperBytes), estimateBytes(parsed.settings.customIcon))
+        }
+      }
+    } catch {
+      /* ignore parse failure */
+    }
+  }
+
+  const recordsBytes = Math.max(0, mainBytes - wallpaperBytes - iconBytes) + corruptBytes + focusBytes
+  const percent = Math.min(100, Math.round((usedBytes / QUOTA_BYTES) * 100))
+
+  return {
+    usedBytes,
+    quotaBytes: QUOTA_BYTES,
+    percent,
+    wallpaperBytes,
+    iconBytes,
+    recordsBytes,
+    snapshotBytes,
+  }
 }
 
 /** 首次启动的示例数据：含近 8 天的打卡历史与 4 条心情，方便立刻体验连胜/热力图/徽章 */
@@ -597,19 +858,11 @@ export async function saveData(data: AppData): Promise<void> {
 }
 
 export function getRawSnapshot(): string | null {
-  try {
-    return localStorage.getItem(STORAGE_KEY)
-  } catch {
-    return null
-  }
+  return safeGetItem(STORAGE_KEY)
 }
 
 export function getCorruptSnapshot(): string | null {
-  try {
-    return localStorage.getItem(CORRUPT_KEY)
-  } catch {
-    return null
-  }
+  return safeGetItem(CORRUPT_KEY)
 }
 
 export async function clearStorage(): Promise<void> {

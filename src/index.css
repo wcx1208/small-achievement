@@ -168,14 +168,12 @@
  * 2. 渐变毛玻璃组件体系（Gradient Glassmorphism System）
  * ============================================================================ */
 @layer components {
-  /* 基础渐变毛玻璃卡片：统一 p-5 内边距、高光内边与通透模糊 */
+  /* 基础渐变毛玻璃卡片：统一 p-5 内边距、高光内边（默认不透明关闭模糊，按需开启） */
   .card {
     @apply rounded-3xl p-5 transition-all duration-200;
     background: var(--surface-card-gradient);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-highlight), var(--glass-shadow);
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   }
 
   /* 核心视觉焦点：暖光渐变毛玻璃大卡（今日主看板 / 关键横幅） */
@@ -184,8 +182,6 @@
     background: var(--surface-hero-glass);
     border: 1px solid var(--glass-border-strong);
     box-shadow: var(--glass-highlight-strong), var(--glass-shadow-lg);
-    backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
-    -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
   }
 
   /* 水光蓝渐变毛玻璃卡（底部元气饮水站专属） */
@@ -194,6 +190,15 @@
     background: var(--surface-water-glass);
     border: 1px solid var(--glass-water-border);
     box-shadow: var(--glass-highlight-strong), var(--glass-water-shadow);
+  }
+
+  /* 仅在卡片处于半透明状态时按需开启毛玻璃模糊，避免默认不透明时浪费 GPU */
+  html[data-card-translucent="true"] .card {
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  }
+  html[data-card-translucent="true"] .glass-hero,
+  html[data-card-translucent="true"] .glass-water {
     backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
     -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(180%);
   }
@@ -208,14 +213,12 @@
     -webkit-backdrop-filter: blur(14px) saturate(160%);
   }
 
-  /* 卡片内部子模块毛玻璃块（快捷入口、统计小格、任务子项） */
+  /* 卡片内部子模块块（快捷入口、统计小格、任务子项；去掉嵌套 blur 降低列表滚动 GPU 开销） */
   .glass-subcard {
     @apply transition-all duration-150;
     background: var(--surface-subcard-glass);
     border: 1px solid var(--glass-subcard-border);
     box-shadow: var(--glass-highlight);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
   }
 
   /* 顶部与底部悬浮毛玻璃导航栏 */
@@ -338,7 +341,7 @@
 .dark .text-slate-800 { color: var(--text-primary); }
 .dark .text-slate-700 { color: #e2e8f0; }
 .dark .text-slate-600 { color: var(--text-secondary); }
-.dark .text-slate-500 { color: #cbd5e1; }
+.dark .text-slate-500 { color: var(--text-muted); }
 .dark .text-slate-400 { color: var(--text-muted); }
 .dark .text-slate-300 { color: var(--text-subtle); }
 .dark .divide-orange-50 > :not([hidden]) ~ :not([hidden]) {

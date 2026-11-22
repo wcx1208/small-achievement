@@ -33,6 +33,13 @@ const THEME_META: Record<ThemeMode, { icon: string; short: string; label: string
 function wallpaperStyle(wp: Wallpaper, tab: TabId, isDark: boolean): CSSProperties {
   const preset = wp.type === 'preset' ? (findPreset(wp.value) ?? WALLPAPERS[0]) : WALLPAPERS[0]
   const baseCss = isDark ? preset.darkCss : preset.css
+  if (preset.kind === 'photo') {
+    return {
+      backgroundImage: baseCss,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+    }
+  }
   const angled = baseCss.replace(/(-?\d+)deg/, (_, d) => `${Number(d) + PAGE_ANGLE[tab]}deg`)
   return { backgroundImage: angled }
 }
@@ -120,12 +127,14 @@ function Shell() {
     return () => window.removeEventListener('xcj:root-back', onRootBack)
   }, [tab])
 
-  // 卡片通透度：写进 CSS 变量，所有 .card 的背景透明度实时跟随（1 = 不透明）
+  // 卡片通透度：写进 CSS 变量，所有 .card 的背景透明度实时跟随（1 = 不透明，按需开关毛玻璃）
   const cardAlphaSetting = ctx?.data.settings.cardAlpha ?? 1
   useEffect(() => {
-    document.documentElement.style.setProperty('--card-alpha', String(cardAlphaSetting))
+    const root = document.documentElement
+    root.style.setProperty('--card-alpha', String(cardAlphaSetting))
     // 能量大卡用温和曲线：最低也有 0.72，保证上面白字仍然清晰
-    document.documentElement.style.setProperty('--hero-alpha', String(0.6 + 0.4 * cardAlphaSetting))
+    root.style.setProperty('--hero-alpha', String(0.6 + 0.4 * cardAlphaSetting))
+    root.dataset.cardTranslucent = cardAlphaSetting < 1 ? 'true' : 'false'
   }, [cardAlphaSetting])
 
   if (!ctx || !ctx.ready) {

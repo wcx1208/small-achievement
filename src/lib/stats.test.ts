@@ -143,3 +143,36 @@ test('adherence and longestStreak handle gaps gracefully', () => {
   assert.equal(adh.total, 3)
   assert.equal(getLongestStreak(sampleCheckIns), 3)
 })
+
+test('deleting a task with cascaded checkIn cleanup resets streak, daily count, task count, and adherence', () => {
+  const tasksAfterDelete = sampleTasks.filter((t) => t.id !== 't1')
+  const checkInsAfterDelete = sampleCheckIns.filter((c) => c.taskId !== 't1')
+
+  // 原先 t1 贡献了 11-06、11-07、11-08 三天连胜；删除 t1 并级联清理 checkIns 后，只剩 t2 在 11-08 的打卡
+  assert.equal(getStreak(checkInsAfterDelete, '2026-11-08'), 1)
+  assert.equal(getTaskTotalCount('t1', checkInsAfterDelete), 0)
+
+  const dayCounts = weeklyActivity(checkInsAfterDelete, '2026-11-08')
+  assert.equal(dayCounts.find((d) => d.date === '2026-11-06')?.count, 0)
+  assert.equal(dayCounts.find((d) => d.date === '2026-11-07')?.count, 0)
+  assert.equal(dayCounts.find((d) => d.date === '2026-11-08')?.count, 1)
+
+  const statusAfterDelete = getTodayStatus(tasksAfterDelete, checkInsAfterDelete, '2026-11-08')
+  assert.equal(statusAfterDelete.completed, 1)
+  assert.equal(statusAfterDelete.total, 2)
+
+  const adhAfterDelete = adherence(checkInsAfterDelete, ['2026-11-06', '2026-11-07', '2026-11-08'])
+  assert.equal(adhAfterDelete.hit, 1)
+  assert.equal(adhAfterDelete.total, 1)
+})
+
+test('recreating a once task after deletion does not stay hidden due to orphan checkIns', () => {
+  // 模拟：t-once 在 2026-11-06 打卡完成，随后被删除并级联清除了 checkIns，之后重建了同 ID 的单次任务
+  const onceTask: Task = { id: 't-once', title: '交材料', repeat: 'once', createdAt: 2000, archived: false }
+  const cleanedCheckIns = sampleCheckIns.filter((c) => c.taskId !== 't-once')
+
+  const status = getTodayStatus([onceTask], cleanedCheckIns, '2026-11-08')
+  assert.equal(status.pending.length, 1)
+  assert.equal(status.pending[0].id, 't-once')
+  assert.equal(status.doneToday.length, 0)
+})

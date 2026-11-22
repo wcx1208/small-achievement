@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { clampOffset, computeCropRect, coverScale } from './crop.ts'
+import { clampOffset, computeCropRect, coverScale } from './crop'
 
 /** 裁切几何测试（Opus/Neon 报告 #1：方向反向 bug 的回归防线）
  * 基准：原图 800x400（横图）、裁切框 400x300（4:3）

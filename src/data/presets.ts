@@ -45,14 +45,14 @@ export interface HabitTemplate {
 }
 
 export const HABIT_TEMPLATES: HabitTemplate[] = [
-  { title: '晨起喝一杯温水', repeat: 'daily', category: 'health', desc: '唤醒身体代谢' },
-  { title: '阅读 10 页书', repeat: 'daily', category: 'study', desc: '每天积累一点新知' },
-  { title: '户外散步 20 分钟', repeat: 'daily', category: 'health', desc: '吹吹风放松眼睛' },
-  { title: '静心冥想 5 分钟', repeat: 'daily', category: 'mind', desc: '把注意力带回呼吸' },
-  { title: '23:00 前放下手机', repeat: 'daily', category: 'health', desc: '给睡眠留出缓冲期' },
-  { title: '随手整理书桌', repeat: 'once', category: 'life', desc: '清爽环境带来好心情' },
-  { title: '专注攻克一件要事', repeat: 'daily', category: 'work', desc: '开启一个番茄钟' },
-  { title: '肩颈拉伸舒展', repeat: 'daily', category: 'health', desc: '缓解久坐酸痛' },
+  { title: '晨起喝一杯温水', repeat: 'daily', category: 'health', desc: '温和唤醒身体与新一天' },
+  { title: '静心阅读 10 页书', repeat: 'daily', category: 'study', desc: '在文字里留一段安静时光' },
+  { title: '户外散步 20 分钟', repeat: 'daily', category: 'health', desc: '迎着微风走走，舒展视线' },
+  { title: '静心冥想 5 分钟', repeat: 'daily', category: 'mind', desc: '放慢呼吸，把注意力带回当下' },
+  { title: '23:00 前放下手机', repeat: 'daily', category: 'health', desc: '给夜晚留出温柔的入睡缓冲' },
+  { title: '随手整理桌面一角', repeat: 'once', category: 'life', desc: '桌面清爽了，心情也会跟着明朗' },
+  { title: '专注推进一件要事', repeat: 'daily', category: 'work', desc: '开启一个番茄钟，只照顾眼前这一步' },
+  { title: '肩颈拉伸与舒展', repeat: 'daily', category: 'health', desc: '松开紧绷的肩膀，善待忙碌的身体' },
 ]
 
 export const DIARY_WEATHERS = [
@@ -66,15 +66,15 @@ export const DIARY_WEATHERS = [
 export const DIARY_PROMPTS = [
   {
     label: '✨ 今日三件小确幸',
-    template: '今天值得记下来的三件小确幸：\n1. \n2. \n3. \n\n此刻对自己说一句：',
+    template: '今天值得记下来的三件小确幸：\n1.\n2.\n3.\n\n此刻想对自己轻轻说一句：',
   },
   {
-    label: '🌱 夸夸今天的自己',
-    template: '今天虽然普通，但我做到了：\n\n最让我有成就感的一个瞬间：\n',
+    label: '🌱 肯定今天的自己',
+    template: '今天虽然平凡，但我认真做到了：\n\n最让我觉得踏实的一个瞬间：\n',
   },
   {
-    label: '🍃 晚间思绪清理',
-    template: '今天脑海里盘旋的事：\n\n可以放下不去纠结的事：\n\n明天最期待的一件小事：',
+    label: '🍃 晚间思绪轻放',
+    template: '今天在脑海里盘旋的事：\n\n今夜可以安心放下的事：\n\n明天最期待的一件小事：',
   },
 ]
 

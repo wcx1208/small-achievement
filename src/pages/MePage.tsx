@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { LocalNotifications } from '@capacitor/local-notifications'
@@ -11,10 +11,25 @@ import { formatDateCN, formatTime, dateStr, todayStr, weekdayCN } from '../lib/d
 import { focusSummary, getGrowthLevel, getStreak, getTodayStatus } from '../lib/stats'
 import { CropModal } from '../components/CropModal'
 import { Modal } from '../components/Modal'
-import { normalizeBackup } from '../storage'
+import { getStorageUsage, normalizeBackup } from '../storage'
 
 const REMINDER_ID = 1001
 const MAX_IMAGE_FILE_BYTES = 15 * 1024 * 1024
+
+function formatSnapshotTime(ts: number): string {
+  if (!Number.isFinite(ts)) return '--'
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return '--'
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${mm}-${dd} ${formatTime(ts)}`
+}
+
+function formatStorageBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB'
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
 
 /** 每天固定时刻提醒打卡（覆盖旧的定时任务） */
 async function scheduleReminder(time: string) {
@@ -59,9 +74,12 @@ export function MePage({ onGoToday, resolvedDark }: { onGoToday?: () => void; re
 function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => void; resolvedDark?: boolean }) {
   const ctx = useData()
   // 所有 Hooks 必须在 early return 之前调用（Opus 报告 P1-7）
-  const [confirmAction, setConfirmAction] = useState<'seed' | 'empty' | 'icon' | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'seed' | 'empty' | 'icon' | 'rollback' | null>(null)
   const [confirmTaskDeleteId, setConfirmTaskDeleteId] = useState<string | null>(null)
   const [shareFallbackText, setShareFallbackText] = useState<string | null>(null)
+  const [pendingImport, setPendingImport] = useState<AppData | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [restoringSnapshot, setRestoringSnapshot] = useState(false)
   const isNative = Capacitor.isNativePlatform()
 
   const theme = ctx?.data.settings.theme ?? 'auto'
@@ -89,9 +107,13 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
     setCardAlphaDraft(Math.round((ctx?.data.settings.cardAlpha ?? 1) * 100))
   }, [ctx?.data.settings.cardAlpha])
 
+  const storageUsage = useMemo(() => getStorageUsage(), [ctx?.data, ctx?.preImportSnapshotMeta])
+
   if (!ctx) return null
   const {
     data,
+    preImportSnapshotMeta,
+    restorePreImportSnapshot,
     setWallpaper,
     setCustomIcon,
     setArchived,
@@ -218,7 +240,7 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
     setTimeout(() => URL.revokeObjectURL(url), 5000)
   }
 
-  /** 导入备份 */
+  /** 选文件后先校验并弹出对比确认框，确认后才执行覆盖导入 */
   const onImportFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = ''
@@ -228,24 +250,36 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
       const parsed = JSON.parse(await file.text())
       next = normalizeBackup(parsed?.data ?? parsed)
     } catch (error) {
-      notify(`导入失败：${(error as Error).message || '备份文件格式不正确'}`)
+      notify(`导入未完成：${(error as Error).message || '备份文件格式无法识别'}`)
       return
     }
-    if (!(await importData(next))) return
+    setPendingImport(next)
+  }
 
-    if (next.settings.reminder.enabled && isNative) {
-      try {
-        await scheduleReminder(next.settings.reminder.time)
-      } catch {
-        await updateSettings({ reminder: { ...next.settings.reminder, enabled: false } })
+  const confirmImport = async () => {
+    if (!pendingImport || importing) return
+    const next = pendingImport
+    setImporting(true)
+    try {
+      if (!(await importData(next))) return
+      setPendingImport(null)
+
+      if (next.settings.reminder.enabled && isNative) {
+        try {
+          await scheduleReminder(next.settings.reminder.time)
+        } catch {
+          await updateSettings({ reminder: { ...next.settings.reminder, enabled: false } })
+        }
+      } else {
+        try { await cancelReminder() } catch { /* ignore */ }
+        if (!isNative && next.settings.reminder.enabled) {
+          await updateSettings({ reminder: { ...next.settings.reminder, enabled: false } })
+        }
       }
-    } else {
-      try { await cancelReminder() } catch { /* ignore */ }
-      if (!isNative && next.settings.reminder.enabled) {
-        await updateSettings({ reminder: { ...next.settings.reminder, enabled: false } })
-      }
+      notify(`导入成功：已恢复 ${next.tasks.length} 个任务与 ${next.checkIns.length} 条打卡记录 ✓`)
+    } finally {
+      setImporting(false)
     }
-    notify(`导入成功：恢复 ${next.tasks.length} 个任务与 ${next.checkIns.length} 条打卡 ✓`)
   }
 
   const unlocked = new Set(data.badges.map((b) => b.id).filter((id) => BADGE_MAP[id]))
@@ -611,41 +645,57 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
             </h2>
             {archived.length === 0 ? (
               <p className="py-1 text-xs leading-relaxed text-slate-500">
-                暂时没有归档任务。在今日页点任意任务右侧的「⋯」即可归档，保留历史打卡记录。
+                暂时没有归档任务。在今日页点任务右侧的「⋯」即可归档，移出清单同时保留历史打卡记录。
               </p>
             ) : (
               <ul className="space-y-2">
                 {archived.map((t) => (
-                  <li key={t.id} className="flex items-center gap-2 rounded-2xl bg-slate-50 px-3.5 py-2 dark:bg-slate-800/70">
-                    <span className="flex-1 truncate text-[14px] text-slate-700">{t.title}</span>
-                    <button
-                      type="button"
-                      className="min-h-[44px] rounded-xl px-3 py-2 text-xs font-semibold text-orange-500 transition hover:bg-orange-50 dark:hover:bg-slate-700"
-                      onClick={() => void setArchived(t.id, false)}
-                    >
-                      恢复
-                    </button>
-                    {confirmTaskDeleteId !== t.id ? (
+                  <li key={t.id} className="rounded-2xl bg-slate-50 px-3.5 py-2 dark:bg-slate-800/70">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[14px] text-slate-700">{t.title}</span>
                       <button
                         type="button"
-                        className="min-h-[44px] rounded-xl px-3 py-2 text-xs text-red-500 transition hover:bg-red-50 dark:hover:bg-slate-700"
-                        onClick={() => setConfirmTaskDeleteId(t.id)}
+                        className="min-h-[44px] rounded-xl px-3 py-2 text-xs font-semibold text-orange-500 transition hover:bg-orange-50 dark:hover:bg-slate-700"
+                        onClick={() => void setArchived(t.id, false)}
                       >
-                        删除
+                        恢复
                       </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="min-h-[44px] rounded-xl bg-red-500 px-3 py-2 text-xs font-semibold text-white"
-                        onClick={async () => {
-                          if (await deleteTask(t.id)) {
-                            setConfirmTaskDeleteId(null)
-                            notify('已删除归档任务')
-                          }
-                        }}
-                      >
-                        确认删除
-                      </button>
+                      {confirmTaskDeleteId !== t.id ? (
+                        <button
+                          type="button"
+                          className="min-h-[44px] rounded-xl px-3 py-2 text-xs text-red-500 transition hover:bg-red-50 dark:hover:bg-slate-700"
+                          onClick={() => setConfirmTaskDeleteId(t.id)}
+                        >
+                          删除
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            className="min-h-[44px] rounded-xl bg-red-500 px-3 py-2 text-xs font-semibold text-white"
+                            onClick={async () => {
+                              if (await deleteTask(t.id)) {
+                                setConfirmTaskDeleteId(null)
+                                notify(`已删除归档任务「${t.title}」及其打卡记录`)
+                              }
+                            }}
+                          >
+                            确认删除（含打卡记录）
+                          </button>
+                          <button
+                            type="button"
+                            className="min-h-[44px] rounded-xl bg-slate-200/80 px-2.5 py-2 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                            onClick={() => setConfirmTaskDeleteId(null)}
+                          >
+                            取消
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {confirmTaskDeleteId === t.id && (
+                      <p className="mt-1 text-[11px] text-red-500/90 dark:text-red-400">
+                        彻底删除后，该任务的历史打卡记录也会一并移除
+                      </p>
                     )}
                   </li>
                 ))}
@@ -691,7 +741,7 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
           {/* 壁纸自定义 */}
           <section className="card">
             <h2 className="mb-1 text-[17px] font-bold text-slate-800">🎨 主题壁纸</h2>
-            <p className="mb-3 text-xs text-slate-500">选一个舒服的渐变色，或上传自己的照片</p>
+            <p className="mb-3 text-xs text-slate-500">选一套渐变或内置插画壁纸，也可上传自己的照片</p>
             <div className="grid grid-cols-4 gap-2.5">
               {WALLPAPERS.map((w) => {
                 const active = wp.type === 'preset' && wp.value === w.id
@@ -699,7 +749,7 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
                 // 关键：预览必须与应用后的实际效果一致（深色模式取 darkCss），否则会"选了跟看到的不一样"
                 const previewCss = resolvedDark ? (w.darkCss ?? w.css) : w.css
                 // 图片壁纸：色块直接显示照片缩略图，一眼能认出是哪张
-                const isPhoto = w.kind === 'photo'
+                const isPhoto = w.kind === 'photo' && w.thumb
                 return (
                   <button
                     key={w.id}
@@ -830,8 +880,12 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
                 onChange={(e) => {
                   const v = Number(e.target.value)
                   setCardAlphaDraft(v)
-                  // 拖动即时生效：直接改 CSS 变量，无需等落库
-                  document.documentElement.style.setProperty('--card-alpha', String(v / 100))
+                  const alpha = v / 100
+                  // 拖动即时生效：直接改 CSS 变量并同步按需毛玻璃标记，无需等落库
+                  const root = document.documentElement
+                  root.style.setProperty('--card-alpha', String(alpha))
+                  root.style.setProperty('--hero-alpha', String(0.6 + 0.4 * alpha))
+                  root.dataset.cardTranslucent = alpha < 1 ? 'true' : 'false'
                 }}
                 onPointerUp={persistCardAlpha}
                 onKeyUp={persistCardAlpha}
@@ -928,6 +982,50 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
           {/* 数据管理 */}
           <section className="card">
             <h2 className="mb-3 text-[17px] font-bold text-slate-800">💾 数据自主与备份</h2>
+
+            {/* 本地存储空间用量条 */}
+            <div className="mb-3.5 rounded-2xl border border-orange-100/80 bg-orange-50/60 p-3.5 dark:border-slate-700/80 dark:bg-slate-800/65">
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-slate-700 dark:text-slate-200">📦 本地存储空间</span>
+                <span className="font-medium text-slate-600 tabular-nums dark:text-slate-300">
+                  已用 {(storageUsage.usedBytes / (1024 * 1024)).toFixed(2)} MB / 约 5.00 MB（{storageUsage.percent}%）
+                </span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200/85 dark:bg-slate-700">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    storageUsage.percent > 70 ? 'bg-amber-500' : 'bg-orange-500'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(0, storageUsage.percent))}%` }}
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-500 tabular-nums">
+                <span className="rounded-lg bg-white/80 px-2 py-0.5 dark:bg-slate-900/60">
+                  记录数据 {formatStorageBytes(storageUsage.recordsBytes)}
+                </span>
+                <span className="rounded-lg bg-white/80 px-2 py-0.5 dark:bg-slate-900/60">
+                  自定义壁纸 {formatStorageBytes(storageUsage.wallpaperBytes)}
+                </span>
+                <span className="rounded-lg bg-white/80 px-2 py-0.5 dark:bg-slate-900/60">
+                  自定义图标 {formatStorageBytes(storageUsage.iconBytes)}
+                </span>
+                <span className="rounded-lg bg-white/80 px-2 py-0.5 dark:bg-slate-900/60">
+                  安全快照 {formatStorageBytes(storageUsage.snapshotBytes)}
+                </span>
+              </div>
+              <p
+                className={`mt-2 text-[11px] leading-relaxed ${
+                  storageUsage.percent > 70
+                    ? 'font-medium text-amber-700 dark:text-amber-300'
+                    : 'text-slate-500'
+                }`}
+              >
+                {storageUsage.percent > 70
+                  ? `💡 本地存储空间已使用 ${storageUsage.percent}%，建议先导出一份 JSON 备份留存，或切换为预设渐变壁纸以释放空间。`
+                  : '纯本地离线存储，日常文字与打卡记录占用极小，可安心长期记录'}
+              </p>
+            </div>
+
             <div className="space-y-2.5">
               <button type="button" className="sheet-btn" onClick={() => void exportBackup()}>
                 ⬇️ 导出完整备份（JSON）
@@ -939,6 +1037,66 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
                 📥 从 JSON 备份文件恢复
                 <input type="file" accept="application/json,.json" className="hidden" onChange={onImportFile} />
               </label>
+
+              {preImportSnapshotMeta && (
+                confirmAction !== 'rollback' ? (
+                  <button
+                    type="button"
+                    className="sheet-btn flex flex-col items-center justify-center py-2.5 text-center"
+                    onClick={() => setConfirmAction('rollback')}
+                  >
+                    <span className="font-semibold text-orange-600 dark:text-orange-400">
+                      ⏪ 恢复上一次导入前的数据
+                    </span>
+                    <span className="mt-0.5 text-[11px] font-normal text-slate-500 tabular-nums">
+                      快照时间 {formatSnapshotTime(preImportSnapshotMeta.savedAt)} · {preImportSnapshotMeta.tasksCount} 个任务 / {preImportSnapshotMeta.checkInsCount} 条打卡 / {preImportSnapshotMeta.diariesCount} 篇日记 / {preImportSnapshotMeta.moodLogsCount} 条心情
+                    </span>
+                    {preImportSnapshotMeta.strippedMedia && (
+                      <span className="mt-0.5 text-[11px] font-normal text-amber-600 dark:text-amber-300">
+                        为节省本地空间，该快照仅保留全部文字与打卡记录，未包含自定义图片壁纸与图标
+                      </span>
+                    )}
+                  </button>
+                ) : (
+                  <div className="space-y-1.5 rounded-2xl border border-orange-200/80 bg-orange-50/70 p-2.5 dark:border-slate-700 dark:bg-slate-800/70">
+                    <p className="text-center text-[11px] text-slate-600 tabular-nums dark:text-slate-300">
+                      快照时间 {formatSnapshotTime(preImportSnapshotMeta.savedAt)} · {preImportSnapshotMeta.tasksCount} 个任务 / {preImportSnapshotMeta.checkInsCount} 条打卡 / {preImportSnapshotMeta.diariesCount} 篇日记 / {preImportSnapshotMeta.moodLogsCount} 条心情
+                    </p>
+                    {preImportSnapshotMeta.strippedMedia && (
+                      <p className="text-center text-[11px] text-amber-600 dark:text-amber-300">
+                        为节省本地空间，该快照仅保留全部文字与打卡记录，未包含自定义图片壁纸与图标
+                      </p>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={restoringSnapshot}
+                        className="sheet-btn flex-1 bg-orange-500! font-semibold text-white! disabled:opacity-50"
+                        onClick={async () => {
+                          setRestoringSnapshot(true)
+                          try {
+                            if (await restorePreImportSnapshot()) {
+                              setConfirmAction(null)
+                            }
+                          } finally {
+                            setRestoringSnapshot(false)
+                          }
+                        }}
+                      >
+                        {restoringSnapshot ? '正在恢复…' : '确认回退到导入前状态'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={restoringSnapshot}
+                        className="sheet-btn w-24! disabled:opacity-50"
+                        onClick={() => setConfirmAction(null)}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
 
               {confirmAction !== 'seed' ? (
                 <button
@@ -1011,7 +1169,68 @@ function MePageInner({ onGoToday, resolvedDark = false }: { onGoToday?: () => vo
         </div>
       </div>
 
-      <p className="pb-2 text-center text-xs text-slate-400">小成就 v1.7 · 温柔地陪你攒成就感 🍊</p>
+      <p className="pb-2 text-center text-xs text-slate-400">
+        小成就 v{__APP_VERSION__} · 记录每一件小事，温柔攒下看得见的成就感 🍊
+      </p>
+
+      {/* 导入备份前对比确认弹窗 */}
+      <Modal
+        open={pendingImport !== null}
+        onClose={() => {
+          if (!importing) setPendingImport(null)
+        }}
+        closeOnBackdrop={!importing}
+      >
+        {pendingImport && (
+          <div>
+            <h3 className="text-center text-[18px] font-bold text-slate-800">📥 确认导入备份数据？</h3>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+              导入后将用备份文件替换当前记录，请先核对两边的数据概况：
+            </p>
+
+            <div className="mt-3 space-y-2.5">
+              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/90 p-3 dark:border-slate-700 dark:bg-slate-800/75">
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">当前本机数据</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-600 tabular-nums dark:text-slate-300">
+                  {data.tasks.length} 个任务 · {data.checkIns.length} 条打卡 · {data.diaries.length} 篇日记 ·{' '}
+                  {data.moodLogs.length} 条心情 · {data.notes.length} 张便签 · {(data.focusSessions ?? []).length} 次专注
+                </p>
+              </div>
+              <div className="rounded-2xl border border-orange-200/90 bg-orange-50/90 p-3 dark:border-orange-500/35 dark:bg-orange-950/35">
+                <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">待导入备份</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-700 tabular-nums dark:text-slate-200">
+                  {pendingImport.tasks.length} 个任务 · {pendingImport.checkIns.length} 条打卡 ·{' '}
+                  {pendingImport.diaries.length} 篇日记 · {pendingImport.moodLogs.length} 条心情 ·{' '}
+                  {pendingImport.notes.length} 张便签 · {(pendingImport.focusSessions ?? []).length} 次专注
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-3 rounded-2xl bg-emerald-50/90 px-3 py-2.5 text-xs leading-relaxed text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-200">
+              🛡 覆盖前会自动为你留存一份当前数据快照，导入后随时可一键回退。
+            </p>
+
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                disabled={importing}
+                onClick={() => setPendingImport(null)}
+                className="min-h-[44px] shrink-0 rounded-2xl bg-slate-100 px-5 py-3 text-[14px] font-medium text-slate-600 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-200"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={importing}
+                onClick={() => void confirmImport()}
+                className="btn-primary min-h-[44px] flex-1 disabled:opacity-50"
+              >
+                {importing ? '正在导入…' : '确认导入并覆盖'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* 无损裁切弹窗：壁纸按屏幕比例，图标按 1:1 */}
       <CropModal

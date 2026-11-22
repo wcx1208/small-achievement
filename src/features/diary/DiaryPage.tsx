@@ -30,17 +30,16 @@ function DiaryPageInner({
   bg: CSSProperties
   showQuote: (kind: 'task' | 'mood') => void
 }) {
+  const ctx = useData()
+  const [editing, setEditing] = useState<DiaryEntry | 'new' | null>(null)
+  const [query, setQuery] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
   useEffect(() => {
     const onBack = () => onClose()
     window.addEventListener('xcj:overlay-back', onBack)
     return () => window.removeEventListener('xcj:overlay-back', onBack)
   }, [onClose])
-
-  const ctx = useData()
-  // 所有 Hooks 必须在 early return 之前调用（Opus 报告 P1-7）
-  const [editing, setEditing] = useState<DiaryEntry | 'new' | null>(null)
-  const [query, setQuery] = useState('')
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   if (!ctx) return null
   const { data, saveDiary, deleteDiary, today, notify } = ctx
